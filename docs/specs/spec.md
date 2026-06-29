@@ -13,7 +13,7 @@ A terminal workspace in the spirit of [cmux](https://github.com/), built around 
 
 A desktop terminal where the unit of work is a **session bound to an agent** (Claude Code, Codex, Cursor, Gemini, …), organized under **projects** in a collapsible side rail. You see at a glance which agents are working, which need your input, and which are done — and you can pre-open a fresh agent session under any project in two clicks.
 
-It is *not* a tab-based terminal. There are no terminal tabs; one session is active in the main pane at a time, chosen from the rail.
+It is *not* a tab-based terminal at the workspace level — sessions live in the side rail, not a flat tab strip. Within an active session, **terminal tabs and splits** work like Ghostty/cmux (§5, §6).
 
 ## 2. Goals
 
@@ -21,12 +21,12 @@ It is *not* a tab-based terminal. There are no terminal tabs; one session is act
 - **Agent-first sessions** — every session knows which agent it runs and surfaces that agent's live state.
 - **Configurable side rail** — collapse/expand on demand (à la cmux), so the terminal can go full-width.
 - **Ghostty look** — import Ghostty's color theme so the terminal feels native to that ecosystem.
-- **Stay simple** — the prototype deliberately omits terminal tabs, splits, and a full settings screen (a tabbed settings mock exists; most git fields are visual-only).
+- **Terminal tabs + splits** — Ghostty-style tab bar and cmux/Ghostty-style pane splits inside each session.
+- **Stay simple** — the prototype deliberately omits real PTY wiring; a tabbed settings mock exists; most git fields are visual-only.
 
 ## 3. Non-goals (for the prototype)
 
 - No real PTY / process spawning (banners are faux output).
-- No terminal tabs or arbitrary pane splits (only terminal + integrated browser).
 - No multi-window or auth / accounts.
 - Browser preview uses a mock HTML page, not a real webview/PTY socket API.
 
@@ -35,7 +35,8 @@ It is *not* a tab-based terminal. There are no terminal tabs; one session is act
 | Concept | Description |
 |---|---|
 | **Project** | A folder on disk (name + path). Collapsible. Holds zero or more sessions. |
-| **Session** | A terminal bound to one **agent**, with a **status** and a short **detail** line. |
+| **Session** | A terminal bound to one **agent**, with a **status** and a short **detail** line. Holds one or more **panes** (tabs) with optional splits. |
+| **Pane** | A tab inside a session — agent output or a shell. One pane is focused at a time; splits show two panes side-by-side or stacked. |
 | **Agent** | The CLI that drives a session: Claude Code, Codex, Cursor Agent, Gemini, Copilot, OpenCode, or plain Shell. |
 | **Status** | `working` · `waiting` (needs input) · `idle` · `done`. Drives the rail's dot color, label, and pulse. |
 
@@ -46,9 +47,13 @@ It is *not* a tab-based terminal. There are no terminal tabs; one session is act
 │ ● ● ●  [▢]  [icon] Sacred          project › session  [🌐] main │  titlebar
 ├───────────────┬────────────────────────────────────────────┤
 │  [⚙][+]       │                                              │
-│ ▾ 📁 project  │     terminal pane (Ghostty theme)            │
-│  [agent pill on project hover]                             │
-│ + Add project │  [icon] message Claude Code…                 │  input
+│ ▾ 📁 project  │ ┌─ tabs ─ split + new ─────────────────────┐ │
+│  [agent pill on project hover]  │ agent │ shell │ + │ ⌘D │  │
+│ + Add project │ ├──────────────────┬───────────────────────┤  │
+│               │ │ terminal (pane)  │ terminal (split)      │  │
+│               │ │ Ghostty theme    │ shell / logs          │  │
+│               │ └──────────────────┴───────────────────────┘  │
+│               │  [icon] message Claude Code…                 │  input
 │               │  ┌─ browser (optional split) ─────────────┐  │
 │               │  │ ← → ↻  localhost:5173              [×]   │  │
 │               │  │        [live preview iframe]           │  │
@@ -59,7 +64,7 @@ It is *not* a tab-based terminal. There are no terminal tabs; one session is act
 ```
 
 - **Side rail** (left): Unpeel-style project tree — no section header; a `+` at the top opens import/create project. Gray folder icon + monospace project name; sessions are single-line rows (brand icon or spinner + task text) with global `⌘N` shortcuts. Hovering a project reveals a pill toolbar of brand agent icons.
-- **Main pane** (right): terminal output and input only — session context (project › task, browser toggle, branch) lives in the **titlebar** (§5). Optional **integrated browser** split on the right (§12). No statusbar/footer.
+- **Main pane** (right): Ghostty-themed terminal workspace with a **tab bar** and optional **splits** per session (§6). Session context (project › task, browser toggle, branch) lives in the **titlebar**. Optional **integrated browser** split on the right (§12). No statusbar/footer.
 
 ## 6. Interactions
 
@@ -67,6 +72,11 @@ It is *not* a tab-based terminal. There are no terminal tabs; one session is act
 |---|---|
 | Toggle side rail | `⌘B` / titlebar sidebar button |
 | Toggle integrated browser | `⌘⌥B` / globe button in session header |
+| New terminal tab (shell) | `⌘T` / tab bar `+` |
+| Split pane right | `⌘D` / tab bar split-right |
+| Split pane down | `⌘⇧D` / tab bar split-down |
+| Close active pane | `⌘W` (when more than one pane) |
+| Focus pane | click a tab or pane cell |
 | Pre-open a session by agent | per-project hover pill (brand icons) or `⌘N` → agent picker |
 | Add a project | rail top `+` → import folder or create new |
 | Switch active session | click a session in the rail |
@@ -75,9 +85,23 @@ It is *not* a tab-based terminal. There are no terminal tabs; one session is act
 | Send to the active agent | type in the input row, `Enter` (flips status to `working`) |
 | Dismiss picker / modal | `Esc` or click the scrim |
 
+### Terminal tabs and splits
+
+Each **session** (chosen from the rail) owns a Ghostty-style **tab bar** above the terminal area. The first tab runs the session's agent; additional tabs open as shell panes in the mock. **Split right** (`⌘D`) and **split down** (`⌘⇧D`) show two panes at once — agent + shell by default — like cmux/Ghostty. Click a tab or pane to focus it; only the focused pane accepts input. Pane state (`panes`, `activePaneId`, `splitLayout`) persists in `localStorage` with the rest of the prototype tree.
+
 ## 7. Agent pre-opening (the Orca pattern)
 
 Clicking an agent icon on a project's hover pill (or `⌘N`) opens a picker: **"Pre-open a session with…"** listing the available agents with their brand icon and provider. Selecting one immediately creates a session in that project, bound to that agent, set to `working` (or `idle` for Shell), and makes it active.
+
+**Settings → Agents → Open with YOLO mode** (default **on**) controls whether pre-opened agent sessions launch with permission-bypass flags (`--yolo`, `--dangerously-skip-permissions`, etc.). When off, each agent uses its safe base command only. The setting is persisted in the prototype's `localStorage` state and reflected in the command preview for each detected agent.
+
+| Agent | YOLO flag (when enabled) |
+|---|---|
+| Claude Code | `--dangerously-skip-permissions` |
+| Codex | `--dangerously-bypass-approvals-and-sandbox` |
+| Cursor Agent | `--yolo` |
+| Gemini | `--yolo` |
+| Copilot / OpenCode / Shell | none |
 
 Default agent roster (vendored brand SVGs from [Lobe Icons](https://lobehub.com/icons) — no emoji or hand-drawn glyphs):
 

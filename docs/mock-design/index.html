@@ -280,8 +280,8 @@
   .workspace {
     flex: 1; display: flex; min-height: 0; min-width: 0;
   }
-  .workspace .term-pane { flex: 1; min-width: 0; }
-  .workspace.browser-open .term-pane { flex: 0 0 48%; max-width: 58%; }
+  .workspace .term-workspace { flex: 1; min-width: 0; }
+  .workspace.browser-open .term-workspace { flex: 0 0 48%; max-width: 58%; }
   .browser-pane {
     flex: 1; min-width: 0; display: none; flex-direction: column;
     background: #0e0e11; border-left: 1px solid rgba(255,255,255,.08);
@@ -356,6 +356,66 @@
     color: var(--g-fg); font-family: var(--mono); font-size: 13px;
   }
   .term-input input::placeholder { color: var(--g-8); }
+
+  /* terminal tabs + splits (Ghostty / cmux) */
+  .term-workspace {
+    flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
+    background: var(--g-bg);
+  }
+  .term-tabs {
+    flex: 0 0 32px; display: flex; align-items: center; gap: 4px;
+    padding: 0 6px 0 8px; background: #131316; border-bottom: 1px solid #222228;
+  }
+  .term-tab-list {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .term-tab-list::-webkit-scrollbar { display: none; }
+  .term-tab {
+    display: inline-flex; align-items: center; gap: 6px; max-width: 160px;
+    height: 24px; padding: 0 8px 0 10px; border-radius: 6px;
+    border: 1px solid transparent; background: transparent;
+    color: var(--text-dim); font-size: 11px; font-family: var(--mono);
+    cursor: pointer; white-space: nowrap; flex: 0 0 auto;
+  }
+  .term-tab:hover { background: rgba(255,255,255,.04); color: var(--text); }
+  .term-tab.active {
+    background: rgba(255,255,255,.06); border-color: #2a2a30; color: var(--text);
+  }
+  .term-tab .tab-close {
+    width: 14px; height: 14px; border-radius: 4px; display: grid; place-items: center;
+    color: var(--text-faint); font-size: 12px; line-height: 1; opacity: 0;
+  }
+  .term-tab:hover .tab-close, .term-tab.active .tab-close { opacity: 1; }
+  .term-tab .tab-close:hover { background: rgba(255,255,255,.1); color: var(--text); }
+  .term-tab-actions {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 2px; margin-left: 4px;
+  }
+  .term-tab-actions button {
+    width: 24px; height: 24px; border: none; border-radius: 6px;
+    background: transparent; color: var(--text-faint); cursor: pointer;
+    display: grid; place-items: center; padding: 0;
+  }
+  .term-tab-actions button:hover { background: rgba(255,255,255,.06); color: var(--text); }
+  .term-split-grid {
+    flex: 1; min-height: 0; min-width: 0; display: flex;
+  }
+  .term-split-grid.hsplit { flex-direction: row; }
+  .term-split-grid.vsplit { flex-direction: column; }
+  .term-cell {
+    flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
+    background: var(--g-bg); position: relative;
+  }
+  .term-cell.focused { box-shadow: inset 0 0 0 1px rgba(250,179,135,.35); }
+  .term-cell + .term-cell { border-left: 1px solid rgba(255,255,255,.06); }
+  .term-split-grid.vsplit .term-cell + .term-cell {
+    border-left: none; border-top: 1px solid rgba(255,255,255,.06);
+  }
+  .term-cell-label {
+    position: absolute; top: 6px; right: 8px; z-index: 1;
+    font: 500 9px/1 var(--mono); letter-spacing: .04em; text-transform: uppercase;
+    color: var(--g-8); pointer-events: none;
+  }
 
   /* empty state */
   .empty {
@@ -853,6 +913,15 @@
           <span>Installed <span class="badge" id="settingsDetectedCount"></span></span>
         </div>
         <div class="settings-scroll">
+          <div class="set-section">
+            <div class="set-row">
+              <div class="set-row-body">
+                <div class="set-row-title">Open with YOLO mode</div>
+                <div class="set-row-desc">When pre-opening an agent session, launch with permission bypass flags (<code>--yolo</code>, <code>--dangerously-skip-permissions</code>, etc.). Off uses each agent&rsquo;s safe default command.</div>
+              </div>
+              <div class="set-row-ctrl"><button type="button" class="set-switch on" id="agentOpenWithYolo" aria-label="Open with YOLO mode"></button></div>
+            </div>
+          </div>
           <div class="settings-list" id="settingsAgentList"></div>
         </div>
       </div>
@@ -1093,14 +1162,21 @@
    AGENT DEFINITIONS  (Unpeel roster -> "pre-open a session by agent")
    ============================================================ */
 const AGENTS = {
-  claude:   { name: 'Claude Code',  color: '#e8ddd3', sub: 'Anthropic · Opus 4.8', cmd: 'claude --dangerously-skip-permissions' },
-  codex:    { name: 'Codex',        color: '#ececec', sub: 'OpenAI · gpt-5',       cmd: 'codex --dangerously-bypass-approvals-and-sandbox' },
-  cursor:   { name: 'Cursor Agent', color: '#8caaee', sub: 'Cursor CLI',           cmd: 'cursor-agent --yolo' },
-  gemini:   { name: 'Gemini',       color: '#8ab4f8', sub: 'Google · 2.5 Pro',     cmd: 'gemini --yolo' },
-  copilot:  { name: 'Copilot',      color: '#81c8be', sub: 'GitHub',               cmd: 'copilot' },
-  opencode: { name: 'OpenCode',     color: '#e5c890', sub: 'open source',          cmd: 'opencode' },
-  shell:    { name: 'Shell',        color: '#a5adce', sub: 'zsh',                  cmd: 'zsh' },
+  claude:   { name: 'Claude Code',  color: '#e8ddd3', sub: 'Anthropic · Opus 4.8', cmd: 'claude', yolo: '--dangerously-skip-permissions' },
+  codex:    { name: 'Codex',        color: '#ececec', sub: 'OpenAI · gpt-5',       cmd: 'codex', yolo: '--dangerously-bypass-approvals-and-sandbox' },
+  cursor:   { name: 'Cursor Agent', color: '#8caaee', sub: 'Cursor CLI',           cmd: 'cursor-agent', yolo: '--yolo' },
+  gemini:   { name: 'Gemini',       color: '#8ab4f8', sub: 'Google · 2.5 Pro',     cmd: 'gemini', yolo: '--yolo' },
+  copilot:  { name: 'Copilot',      color: '#81c8be', sub: 'GitHub',               cmd: 'copilot', yolo: null },
+  opencode: { name: 'OpenCode',     color: '#e5c890', sub: 'open source',          cmd: 'opencode', yolo: null },
+  shell:    { name: 'Shell',        color: '#a5adce', sub: 'zsh',                  cmd: 'zsh', yolo: null },
 };
+
+function agentLaunchCmd(key, yolo) {
+  var a = AGENTS[key];
+  if (!a) return '';
+  if (yolo && a.yolo) return a.cmd + ' ' + a.yolo;
+  return a.cmd;
+}
 
 const MAX_PINNED_AGENTS = 6;
 const DEFAULT_PINNED_AGENTS = ['opencode', 'cursor', 'gemini', 'codex', 'claude'];
@@ -1317,6 +1393,7 @@ function seed() {
     activeId: null,
     agentEnabled: null,
     pinnedAgents: null,
+    agentSettings: null,
     appearanceSettings: null,
     gitSettings: defaultGitSettings(),
     projects: [
@@ -1345,9 +1422,24 @@ function seed() {
 let state = load() || seed();
 ensureAgentEnabled();
 ensurePinnedAgents();
+ensureAgentSettings();
 ensureAppearanceSettings();
 ensureGitSettings();
 state.activeId = state.activeId || findDefaultActive();
+
+function defaultAgentSettings() {
+  return { openWithYolo: true };
+}
+
+function ensureAgentSettings() {
+  if (!state.agentSettings) state.agentSettings = defaultAgentSettings();
+  state.agentSettings = Object.assign(defaultAgentSettings(), state.agentSettings);
+}
+
+function isOpenWithYolo() {
+  ensureAgentSettings();
+  return !!state.agentSettings.openWithYolo;
+}
 
 function defaultAppearanceSettings() {
   return {
@@ -1534,6 +1626,7 @@ function load() {
             s.browserOpen = (p.name === 'design-system' && s.agent === 'claude') ||
               (p.name === 'marketing-site' && s.agent === 'gemini');
           }
+          ensureSessionPanes(s);
         });
       });
     }
@@ -1553,6 +1646,163 @@ function findSession(id) {
     if (s) return { project: p, session: s };
   }
   return null;
+}
+
+function ensureSessionPanes(session) {
+  if (!session.panes || !session.panes.length) {
+    var agent = AGENTS[session.agent] || AGENTS.shell;
+    session.panes = [{ id: nid(), title: agent.name, kind: session.agent === 'shell' ? 'shell' : 'agent' }];
+  }
+  if (!session.activePaneId || !session.panes.some(function (p) { return p.id === session.activePaneId; })) {
+    session.activePaneId = session.panes[0].id;
+  }
+  if (session.splitLayout !== 'hsplit' && session.splitLayout !== 'vsplit') {
+    session.splitLayout = null;
+  }
+  if (session.panes.length < 2 && session.splitLayout) session.splitLayout = null;
+}
+
+function addSessionPane(session, title, kind) {
+  ensureSessionPanes(session);
+  var pane = { id: nid(), title: title || ('Tab ' + (session.panes.length + 1)), kind: kind || 'shell' };
+  session.panes.push(pane);
+  session.activePaneId = pane.id;
+  session.splitLayout = null;
+  return pane;
+}
+
+function splitSession(session, direction) {
+  ensureSessionPanes(session);
+  if (session.panes.length < 2) {
+    addSessionPane(session, direction === 'down' ? 'bottom' : 'right', 'shell');
+    session.panes[0].kind = session.panes[0].kind || 'agent';
+  }
+  session.splitLayout = direction === 'down' ? 'vsplit' : 'hsplit';
+  session.activePaneId = session.panes[session.panes.length - 1].id;
+}
+
+function closeSessionPane(session, paneId) {
+  ensureSessionPanes(session);
+  if (session.panes.length <= 1) return;
+  session.panes = session.panes.filter(function (p) { return p.id !== paneId; });
+  if (session.activePaneId === paneId) session.activePaneId = session.panes[0].id;
+  if (session.panes.length < 2) session.splitLayout = null;
+}
+
+function setActivePane(session, paneId) {
+  ensureSessionPanes(session);
+  if (!session.panes.some(function (p) { return p.id === paneId; })) return;
+  session.activePaneId = paneId;
+}
+
+function paneBanner(session, project, pane) {
+  if (pane.kind === 'shell') {
+    return '<span class="c2">' + escapeHtml(project.path.replace('~', '')) + '</span> <span class="dim">· shell</span>\n' +
+      '<span class="c2 b">' + escapeHtml(project.path) + '</span> <span class="c4">%</span> <span class="cursor"></span>';
+  }
+  return banner(session, project);
+}
+
+function buildTermCell(session, project, pane, focused) {
+  var a = AGENTS[session.agent] || AGENTS.shell;
+  var cell = el('div', 'term-cell' + (focused ? ' focused' : ''));
+  cell.dataset.paneId = pane.id;
+  cell.onclick = function () {
+    setActivePane(session, pane.id);
+    save();
+    renderMain();
+  };
+
+  var label = el('div', 'term-cell-label', pane.title);
+  cell.appendChild(label);
+
+  var term = el('div', 'term');
+  term.innerHTML = paneBanner(session, project, pane);
+  cell.appendChild(term);
+
+  var input = el('div', 'term-input');
+  input.innerHTML = '<span class="ip">' + SacredIcons.sessionIcon(pane.kind === 'shell' ? 'shell' : session.agent, 14, session.status) + '</span>';
+  var field = el('input');
+  field.placeholder = pane.kind === 'shell' ? 'type a command...' : ('message ' + a.name + '...');
+  if (focused) {
+    field.onkeydown = function (e) {
+      if (e.key === 'Enter' && field.value.trim()) {
+        var msg = field.value.trim();
+        appendLine(term, msg);
+        field.value = '';
+        if (pane.kind !== 'shell') {
+          session.status = 'working';
+          session.task = msg;
+          var titleEl = $('#titleSession .sess-title');
+          if (titleEl) titleEl.textContent = msg;
+          renderTree();
+        }
+        save();
+        input.querySelector('.ip').innerHTML = SacredIcons.sessionIcon(
+          pane.kind === 'shell' ? 'shell' : session.agent, 14, pane.kind === 'shell' ? 'idle' : 'working');
+      }
+    };
+  } else {
+    field.disabled = true;
+    field.placeholder = 'click pane to focus';
+  }
+  input.appendChild(field);
+  cell.appendChild(input);
+  return cell;
+}
+
+function renderTermWorkspace(session, project) {
+  ensureSessionPanes(session);
+  var wrap = el('div', 'term-workspace');
+
+  var tabs = el('div', 'term-tabs');
+  var tabList = el('div', 'term-tab-list');
+  session.panes.forEach(function (pane) {
+    var tab = el('button', 'term-tab' + (pane.id === session.activePaneId ? ' active' : ''));
+    tab.type = 'button';
+    tab.innerHTML = '<span class="tab-title">' + escapeHtml(pane.title) + '</span>' +
+      (session.panes.length > 1 ? '<span class="tab-close" aria-hidden="true">×</span>' : '');
+    tab.onclick = function (e) {
+      if (e.target.classList.contains('tab-close')) {
+        e.stopPropagation();
+        closeSessionPane(session, pane.id);
+      } else {
+        setActivePane(session, pane.id);
+      }
+      save();
+      renderMain();
+    };
+    tabList.appendChild(tab);
+  });
+  tabs.appendChild(tabList);
+
+  var actions = el('div', 'term-tab-actions');
+  actions.innerHTML =
+    '<button type="button" data-split="right" title="Split right (⌘D)" aria-label="Split right">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="20"/></svg>' +
+    '</button>' +
+    '<button type="button" data-split="down" title="Split down (⌘⇧D)" aria-label="Split down">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/></svg>' +
+    '</button>' +
+    '<button type="button" data-new-tab title="New tab (⌘T)" aria-label="New tab">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+    '</button>';
+  actions.querySelector('[data-split="right"]').onclick = function () { splitSession(session, 'right'); save(); renderMain(); };
+  actions.querySelector('[data-split="down"]').onclick = function () { splitSession(session, 'down'); save(); renderMain(); };
+  actions.querySelector('[data-new-tab]').onclick = function () { addSessionPane(session, null, 'shell'); save(); renderMain(); };
+  tabs.appendChild(actions);
+  wrap.appendChild(tabs);
+
+  var grid = el('div', 'term-split-grid' + (session.splitLayout ? ' ' + session.splitLayout : ''));
+  if (session.splitLayout) {
+    grid.appendChild(buildTermCell(session, project, session.panes[0], session.activePaneId === session.panes[0].id));
+    grid.appendChild(buildTermCell(session, project, session.panes[1], session.activePaneId === session.panes[1].id));
+  } else {
+    var active = session.panes.find(function (p) { return p.id === session.activePaneId; }) || session.panes[0];
+    grid.appendChild(buildTermCell(session, project, active, true));
+  }
+  wrap.appendChild(grid);
+  return wrap;
 }
 
 function defaultBrowserUrl(project) {
@@ -1691,36 +1941,10 @@ function renderMain() {
   }
 
   const project = found.project, session = found.session;
-  const a = AGENTS[session.agent] || AGENTS.shell;
   if (!session.browserUrl) session.browserUrl = defaultBrowserUrl(project);
 
   const workspace = el('div', 'workspace' + (session.browserOpen ? ' browser-open' : ''));
-  const pane = el('div', 'term-pane');
-
-  const term = el('div', 'term');
-  term.innerHTML = banner(session, project);
-  pane.appendChild(term);
-
-  const input = el('div', 'term-input');
-  input.innerHTML = '<span class="ip">' + SacredIcons.sessionIcon(session.agent, 14, session.status) + '</span>';
-  const field = el('input');
-  field.placeholder = session.agent === 'shell' ? 'type a command...' : ('message ' + a.name + '...');
-  field.onkeydown = (e) => {
-    if (e.key === 'Enter' && field.value.trim()) {
-      var msg = field.value.trim();
-      appendLine(term, msg);
-      field.value = '';
-      session.status = 'working';
-      session.task = msg;
-      var titleEl = $('#titleSession .sess-title');
-      if (titleEl) titleEl.textContent = msg;
-      save(); renderTree();
-      input.querySelector('.ip').innerHTML = SacredIcons.sessionIcon(session.agent, 14, 'working');
-    }
-  };
-  input.appendChild(field);
-  pane.appendChild(input);
-  workspace.appendChild(pane);
+  workspace.appendChild(renderTermWorkspace(session, project));
 
   if (session.browserOpen) {
     const browser = el('div', 'browser-pane');
@@ -1873,6 +2097,7 @@ function createSession(projectId, agentKey, worktree) {
   const p = state.projects.find(x => x.id === projectId);
   if (!p) return;
   const a = AGENTS[agentKey];
+  const yolo = isOpenWithYolo() && !!a.yolo;
   const defaults = {
     claude: 'New Claude session',
     codex: 'New Codex session',
@@ -1887,12 +2112,14 @@ function createSession(projectId, agentKey, worktree) {
     task: defaults[agentKey] || a.name,
     status: agentKey === 'shell' ? 'idle' : 'working',
     worktree: !!worktree,
+    yolo: yolo,
     browserUrl: defaultBrowserUrl(p),
     browserOpen: false,
   };
   p.sessions.push(s);
   p.collapsed = false;
   state.activeId = s.id;
+  ensureSessionPanes(s);
   save(); render();
 }
 
@@ -2132,7 +2359,7 @@ function renderSettingsAgents() {
       '<div class="setting-agent-icon">' + SacredIcons.agentIconPicker(key, 20) + '</div>' +
       '<div class="setting-agent-body">' +
         '<div class="setting-agent-title"><span class="name">' + escapeHtml(a.name) + '</span><span class="pill">Detected</span></div>' +
-        '<div class="setting-agent-cmd">' + escapeHtml(a.cmd) + '</div>' +
+        '<div class="setting-agent-cmd">' + escapeHtml(agentLaunchCmd(key, isOpenWithYolo())) + '</div>' +
       '</div>' +
       '<div class="setting-agent-ctrls">' +
         '<button type="button" class="pin-btn' + (pinOn ? ' on' : '') + '" title="' +
@@ -2156,9 +2383,28 @@ function renderSettingsAgents() {
   });
 }
 
+function syncAgentSettingsUI() {
+  ensureAgentSettings();
+  var sw = $('#agentOpenWithYolo');
+  if (sw) sw.classList.toggle('on', !!state.agentSettings.openWithYolo);
+}
+
+function wireAgentSettings() {
+  var sw = $('#agentOpenWithYolo');
+  if (sw) {
+    sw.onclick = function () {
+      state.agentSettings.openWithYolo = !state.agentSettings.openWithYolo;
+      syncAgentSettingsUI();
+      renderSettingsAgents();
+      save();
+    };
+  }
+}
+
 function openSettings(tab) {
   closePicker(); closeModal(); closeProjectMenu();
   renderSettingsAgents();
+  syncAgentSettingsUI();
   syncGitSettingsUI();
   syncAppearanceSettingsUI();
   switchSettingsTab(tab || 'agents');
@@ -2188,6 +2434,7 @@ document.querySelectorAll('.settings-tab').forEach(function (btn) {
   btn.onclick = function () { switchSettingsTab(btn.getAttribute('data-tab')); };
 });
 wireGitSettings();
+wireAgentSettings();
 wireAppearanceSettings();
 applyAppearanceSettings();
 $('#addProject').onclick = (e) => { e.stopPropagation(); openProjectMenu(e.currentTarget); };
@@ -2203,6 +2450,29 @@ $('#mName').onkeydown = (e) => { if (e.key === 'Enter') $('#mPath').focus(); };
 document.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b' && !e.altKey) { e.preventDefault(); toggleRail(); }
   if ((e.metaKey || e.ctrlKey) && e.altKey && e.key.toLowerCase() === 'b') { e.preventDefault(); toggleBrowser(); }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 't') {
+    e.preventDefault();
+    var foundT = state.activeId && findSession(state.activeId);
+    if (foundT) { addSessionPane(foundT.session, null, 'shell'); save(); renderMain(); }
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd' && !e.shiftKey) {
+    e.preventDefault();
+    var foundD = state.activeId && findSession(state.activeId);
+    if (foundD) { splitSession(foundD.session, 'right'); save(); renderMain(); }
+  }
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'd') {
+    e.preventDefault();
+    var foundV = state.activeId && findSession(state.activeId);
+    if (foundV) { splitSession(foundV.session, 'down'); save(); renderMain(); }
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'w') {
+    var foundW = state.activeId && findSession(state.activeId);
+    if (foundW && foundW.session.panes && foundW.session.panes.length > 1) {
+      e.preventDefault();
+      closeSessionPane(foundW.session, foundW.session.activePaneId);
+      save(); renderMain();
+    }
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
     e.preventDefault();
     const found = state.activeId && findSession(state.activeId);
