@@ -1,0 +1,33 @@
+{
+  "name": "the-sacred-terminal",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A terminal workspace organized around projects and agents — real PTYs rendered by Ghostty (ghostty-web/libghostty WASM), modeled on cmux.",
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c green,cyan \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:web": "vite",
+    "dev:server": "node server/pty-server.mjs",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "screenshots": "node scripts/screenshots.mjs"
+  },
+  "dependencies": {
+    "ghostty-web": "^0.4.0",
+    "immer": "^10.2.0",
+    "node-pty": "^1.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ws": "^8.18.0",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.5.13",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}

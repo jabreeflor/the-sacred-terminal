@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.log
+dev.log
+# transient screenshots taken during development (final ones live in docs/)
+shot-*.png
+spike.png
