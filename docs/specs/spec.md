@@ -2,7 +2,9 @@
 
 A terminal workspace in the spirit of [cmux](https://github.com/), built around **projects and agents** instead of raw terminal tabs.
 
-> Status: **prototype**. The interactive mock lives at [`../mock-design/index.html`](../mock-design/index.html).
+> Status: **prototype**. Interactive mocks:
+> - Main window — [`../mock-design/index.html`](../mock-design/index.html)
+> - Menu-bar monitor ("Always running") — [`../mock-design/menu-bar.html`](../mock-design/menu-bar.html)
 
 ---
 
@@ -112,9 +114,61 @@ Swapping any Ghostty palette into layer 2 re-skins every terminal pane at once.
 
 Prototype stores the full tree (projects, sessions, rail state, active session) in `localStorage` under `cmux-proto`, so state survives a refresh. Production would back this with real session/process state.
 
-## 11. Open questions
+## 11. Always running — the menu-bar monitor
+
+> Mock: [`../mock-design/menu-bar.html`](../mock-design/menu-bar.html) · preview: `screenshots/preview-menu-bar.png`
+
+The window is disposable; the work is not. Closing the window must never stop an agent.
+
+- **Hosted processes.** Every session runs in its own long-lived host process, independent of any window. Quitting or closing the window leaves sessions running.
+- **Menu-bar item ("the pulse").** A persistent macOS menu-bar item keeps a live pulse on all sessions across all projects:
+  - **Spins** whenever any agent is `working`.
+  - **Rings** (animated ring + notify badge) whenever any session is `waiting` (needs you).
+  - Idle/quiet when nothing is running.
+- **The roster.** Clicking the item opens a dropdown listing active sessions — newest/most-relevant first, grouped roughly by recency, with a separator above items that need attention. Each row shows:
+
+  | Element | Meaning |
+  |---|---|
+  | left indicator | per-session state — a spinner while `working`, an app glyph when idle |
+  | title | the latest message / task, truncated |
+  | subtitle | the project (e.g. `acme-storefront`) |
+  | right identity | the agent's glyph, or a blue dot when the session needs you / has unread output |
+
+- **Snap-back.** Picking a row reopens the window focused **directly on that conversation** — no hunting through the rail.
+- **Shared status source.** The pulse, the rail dots, and the roster all read the same `statusMeta(status)` model (§8), so a session's state looks consistent everywhere it appears.
+
+This is the "window closed" counterpart to the main window (§5): same sessions, same statuses, surfaced through the OS chrome instead of the app chrome.
+
+## 12. Integrated browser
+
+A real browser pane lives **inside** the workspace, so you can preview what an agent is building — and let the agent drive the page — without leaving the terminal. This mirrors [cmux's browser](https://manaflow-ai-cmux.mintlify.app/features/browser), which fits our Ghostty/libghostty lineage.
+
+> Spec feature — not in the current mock (the prototype deliberately stays single-pane, §3).
+
+- **Split pane.** Open a browser beside the active session's terminal (toggle, e.g. `⌘⌥B`). It splits the main pane (§5) rather than replacing it. Per-session: each agent gets a browser pointed at its own dev server (e.g. `localhost:3001`).
+- **One programmable surface.** Both you and the agent drive the same browser over a single socket API: navigate, snapshot the DOM / accessibility tree, click, type, fill forms, evaluate JS, and read console + network activity.
+- **Element refs, not coordinates.** A snapshot returns a JSON accessibility tree with stable element refs; the agent acts on a ref instead of guessing pixels:
+
+  ```
+  browser snapshot                          # a11y tree -> refs
+  browser navigate <url>
+  browser click  --ref <element-ref>
+  browser fill   --ref <element-ref> --value "…"
+  browser eval   "document.title"
+  ```
+
+- **Send-to-agent.** Click any element in the browser to hand its **ref + HTML/CSS + a cropped screenshot** to the active agent — so "make this button match the design" just works (cf. Orca's click-to-context).
+- **Closed feedback loop.** Console errors and failed network requests stream back to the agent automatically, closing build → preview → fix inside one window.
+- **Chrome.** Address bar + back/forward/reload; auto-reload follows the dev server.
+
+Because the browser is bound to a **session** (§4), it inherits that session's agent — whichever agent owns the terminal also owns the browser, and its actions show up in the same status/pulse model (§8, §11).
+
+## 13. Open questions
 
 - Slim icon-rail vs. full collapse?
 - Drag-to-reorder sessions / projects?
 - Real terminal (xterm.js + PTY) and worktree isolation per agent session (cf. Orca)?
 - Where do agent definitions live — built-in list vs. user-configurable?
+- Hosted-process model: per-session daemon vs. one supervisor process? How are sessions reattached after a full app restart (not just window close)?
+- Menu-bar roster: cap the list length, or scroll? How is "needs you" ordered against plain recency?
+- Integrated browser: bundle a webview (WKWebView/Chromium) or reuse the system one? Browser split per session vs. one shared browser that follows the active session?

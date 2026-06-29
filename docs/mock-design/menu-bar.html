@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Sacred Terminal · Always running (menu-bar monitor)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:        #08080a;
+    --text:      #f2f2f4;
+    --text-dim:  #9a9aa3;
+    --text-faint:#5b5b63;
+    --orange:    #fab387;
+    --green:     #a6d189;
+    --blue:      #8caaee;
+    --pink:      #f2a4db;
+    --ring:      #e5c890;
+    --notify:    #2f6fed;
+    --ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background:
+      radial-gradient(circle at 1px 1px, rgba(255,255,255,.045) 1px, transparent 1.6px) 0 0 / 23px 23px,
+      var(--bg);
+    color: var(--text);
+    font-family: var(--ui);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 84px 56px 0; }
+
+  /* ---- hero ---- */
+  .eyebrow {
+    font-family: var(--mono); font-size: 14px; color: var(--text-faint);
+    letter-spacing: .02em; margin-bottom: 26px;
+  }
+  h1 {
+    font-weight: 800; font-size: clamp(42px, 6vw, 76px); line-height: 1.02;
+    letter-spacing: -.025em; color: var(--text); max-width: 14ch;
+  }
+  .lede {
+    margin-top: 30px; max-width: 640px;
+    font-size: clamp(17px, 1.7vw, 21px); line-height: 1.55; color: var(--text-dim);
+  }
+  .lede b { color: var(--text); font-weight: 600; }
+
+  /* ============================================================
+     macOS DESKTOP STAGE
+     ============================================================ */
+  .stage { margin-top: 64px; padding-bottom: 0; }
+  .desktop {
+    position: relative;
+    height: 560px;
+    border-radius: 16px 16px 0 0;
+    overflow: hidden;
+    background:
+      radial-gradient(120% 90% at 75% -10%, #5a4a86 0%, #3a3160 38%, #262238 70%, #1d1b29 100%);
+    box-shadow: 0 -1px 0 rgba(255,255,255,.06) inset, 0 40px 120px rgba(0,0,0,.5);
+    border: 1px solid rgba(255,255,255,.06);
+    border-bottom: none;
+  }
+
+  /* ---- menu bar ---- */
+  .menubar {
+    height: 30px; display: flex; align-items: center; gap: 18px;
+    padding: 0 14px;
+    background: rgba(16,15,22,.5);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255,255,255,.06);
+    font-size: 13px; color: #eceaf2; position: relative; z-index: 5;
+    user-select: none;
+  }
+  .menubar .apple { font-size: 14px; }
+  .menubar .app { font-weight: 700; }
+  .menubar .mi { color: #d7d5df; opacity: .92; }
+  .menubar .spacer { flex: 1; }
+  .menubar .tray { display: flex; align-items: center; gap: 15px; }
+  .menubar .tray svg { display: block; opacity: .9; }
+  .menubar .clock { font-variant-numeric: tabular-nums; font-size: 12.5px; color: #eceaf2; }
+
+  /* ---- the pulse menu-bar item ---- */
+  .pulse {
+    position: relative; width: 22px; height: 22px;
+    display: grid; place-items: center; cursor: pointer; border-radius: 6px;
+  }
+  .pulse:hover { background: rgba(255,255,255,.1); }
+  .pulse.active { background: rgba(255,255,255,.14); }
+  .pulse .spin {
+    width: 15px; height: 15px; color: #fff;
+    animation: spin 2.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* "rings when one needs you" */
+  .pulse .ring {
+    position: absolute; inset: -2px; border-radius: 8px;
+    border: 1.5px solid var(--ring); opacity: 0;
+    animation: ring 2.4s ease-out infinite;
+  }
+  @keyframes ring {
+    0%   { transform: scale(.7);  opacity: .9; }
+    70%  { transform: scale(1.5); opacity: 0; }
+    100% { opacity: 0; }
+  }
+  .pulse .badge {
+    position: absolute; top: -1px; right: -1px; width: 7px; height: 7px;
+    border-radius: 50%; background: var(--notify);
+    box-shadow: 0 0 0 1.5px rgba(16,15,22,.9);
+  }
+
+  /* ---- dropdown ---- */
+  .menu {
+    position: absolute; z-index: 6; top: 38px; right: 12px; width: 440px;
+    background: rgba(26,26,32,.86);
+    backdrop-filter: blur(34px) saturate(1.4); -webkit-backdrop-filter: blur(34px) saturate(1.4);
+    border: 1px solid rgba(255,255,255,.09);
+    border-radius: 14px;
+    box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 .5px rgba(255,255,255,.04) inset;
+    padding: 7px; opacity: 0; transform: translateY(-6px) scale(.985);
+    transform-origin: top right; pointer-events: none;
+    transition: opacity .14s ease, transform .14s ease;
+  }
+  .menu.open { opacity: 1; transform: none; pointer-events: auto; }
+  .menu .caret {
+    position: absolute; top: -6px; right: 60px; width: 12px; height: 12px;
+    background: rgba(26,26,32,.86); border-left: 1px solid rgba(255,255,255,.09);
+    border-top: 1px solid rgba(255,255,255,.09); transform: rotate(45deg);
+  }
+
+  .row {
+    display: flex; align-items: center; gap: 13px;
+    padding: 11px 13px; border-radius: 10px; cursor: pointer; position: relative;
+  }
+  .row:hover { background: rgba(255,255,255,.05); }
+  .row.active { background: rgba(255,255,255,.07); }
+
+  .row .lead { width: 18px; flex: 0 0 18px; display: grid; place-items: center; }
+  .row .body { flex: 1; min-width: 0; }
+  .row .title {
+    font-size: 14px; font-weight: 500; color: #f1f0f5;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .row .sub { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+  .row .ident { width: 22px; flex: 0 0 22px; display: grid; place-items: center; font-family: var(--mono); font-size: 15px; }
+
+  /* per-row working spinner */
+  .mini {
+    width: 13px; height: 13px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.16);
+    border-top-color: currentColor; animation: spin 1s linear infinite;
+  }
+  .mini.c-orange { color: var(--orange); }
+  .mini.c-green  { color: var(--green); }
+  .mini.c-blue   { color: var(--blue); }
+
+  /* small app/file glyph for the idle/unread row */
+  .appicon {
+    width: 18px; height: 18px; border-radius: 5px;
+    background: linear-gradient(160deg, #3a3a44, #222229);
+    border: 1px solid rgba(255,255,255,.12);
+    display: grid; place-items: center; font-size: 9px; color: #b9b9c4;
+  }
+  .dot-notify { width: 8px; height: 8px; border-radius: 50%; background: var(--notify); }
+
+  .sep { height: 1px; background: rgba(255,255,255,.07); margin: 6px 10px; }
+
+  .ident.orange { color: var(--orange); }
+  .ident.green  { color: var(--green); }
+  .ident.pink   { color: var(--pink); }
+
+  /* caption under stage */
+  .caption {
+    text-align: center; font-family: var(--mono); font-size: 12px;
+    color: var(--text-faint); padding: 18px 0 40px;
+  }
+  .caption b { color: var(--text-dim); font-weight: 500; }
+
+  /* toast */
+  .toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px);
+    background: rgba(20,20,26,.95); border: 1px solid rgba(255,255,255,.1);
+    color: #ececf2; padding: 11px 18px; border-radius: 10px; font-size: 13.5px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.5); opacity: 0; pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease; z-index: 30; font-family: var(--mono);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- HERO -->
+    <div class="eyebrow">Always running</div>
+    <h1>Close the window. Your agents keep working.</h1>
+    <p class="lede">
+      Every session runs in its own <b>hosted process</b>, so it survives quitting the window.
+      A menu-bar item keeps a live pulse on all of them &mdash; it <b>spins</b> whenever an agent
+      is working and <b>rings</b> when one needs you. Click it for the full roster, pick one, and
+      The Sacred Terminal <b>snaps the window back open</b> right to that conversation.
+    </p>
+
+    <!-- STAGE: macOS desktop -->
+    <div class="stage">
+      <div class="desktop" id="desktop">
+        <!-- menu bar -->
+        <div class="menubar">
+          <span class="apple">&#63743;</span>
+          <span class="app">Sacred</span>
+          <span class="mi">File</span><span class="mi">Edit</span><span class="mi">View</span>
+          <span class="mi">Window</span><span class="mi">Help</span>
+          <span class="spacer"></span>
+          <span class="tray">
+            <!-- battery -->
+            <svg width="24" height="14" viewBox="0 0 24 14" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1" y="3" width="18" height="8" rx="2"/><rect x="2.5" y="4.5" width="11" height="5" rx="1" fill="currentColor" stroke="none"/><path d="M21 5.5v3" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <!-- wifi -->
+            <svg width="16" height="14" viewBox="0 0 16 14" fill="currentColor"><path d="M8 11.5a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6zM8 6.5c1.7 0 3.2.7 4.3 1.8l1.3-1.4A8 8 0 0 0 8 4.4 8 8 0 0 0 2.4 6.9l1.3 1.4A6 6 0 0 1 8 6.5zM8 1.4a11 11 0 0 0-7.7 3.2l1.3 1.4A9 9 0 0 1 8 3.4a9 9 0 0 1 6.4 2.6l1.3-1.4A11 11 0 0 0 8 1.4z"/></svg>
+            <!-- search -->
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21" stroke-linecap="round"/></svg>
+            <!-- the pulse menu-bar item -->
+            <span class="pulse active" id="pulse" title="3 working · 1 needs you">
+              <svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+                <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" opacity=".9"/>
+              </svg>
+              <span class="ring"></span>
+              <span class="badge"></span>
+            </span>
+            <!-- control center -->
+            <svg width="17" height="14" viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="3" width="20" height="6" rx="3"/><rect x="2" y="11" width="20" height="6" rx="3"/><circle cx="8" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="16" cy="14" r="1.6" fill="currentColor" stroke="none"/></svg>
+            <span class="clock">Mon 22 Jun&nbsp;&nbsp;14:04</span>
+          </span>
+        </div>
+
+        <!-- dropdown roster -->
+        <div class="menu open" id="menu">
+          <div class="caret"></div>
+
+          <div class="row active" data-title="I'm thinking about re-factoring the session host">
+            <span class="lead"><span class="mini c-orange"></span></span>
+            <span class="body">
+              <div class="title">I&rsquo;m thinking about re-factoring the session host&hellip;</div>
+              <div class="sub">the-sacred-terminal</div>
+            </span>
+            <span class="ident orange">&#10037;</span>
+          </div>
+
+          <div class="row" data-title="can you set up this as a monorepo with turborepo">
+            <span class="lead"><span class="mini c-green"></span></span>
+            <span class="body">
+              <div class="title">can you set up this as a monorepo with turborepo&hellip;</div>
+              <div class="sub">storepilot</div>
+            </span>
+            <span class="ident green">&#11041;</span>
+          </div>
+
+          <div class="row" data-title="Audit the checkout flow for a11y regressions">
+            <span class="lead"><span class="mini c-blue"></span></span>
+            <span class="body">
+              <div class="title">Audit the checkout flow for a11y regressions</div>
+              <div class="sub">acme-storefront</div>
+            </span>
+            <span class="ident pink">&#10022;</span>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="row" data-title="Bump deps and fix the type errors">
+            <span class="lead"><span class="appicon">&#9633;</span></span>
+            <span class="body">
+              <div class="title">Bump deps and fix the type errors</div>
+              <div class="sub">design-system &middot; needs your input</div>
+            </span>
+            <span class="ident"><span class="dot-notify"></span></span>
+          </div>
+        </div>
+      </div>
+      <div class="caption">
+        <b>The Sacred Terminal</b> &mdash; menu-bar monitor &middot; window closed, agents still running
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+  var pulse = document.getElementById('pulse');
+  var menu  = document.getElementById('menu');
+  var toast = document.getElementById('toast');
+  var hideTimer;
+
+  function setOpen(open) {
+    menu.classList.toggle('open', open);
+    pulse.classList.toggle('active', open);
+  }
+
+  pulse.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setOpen(!menu.classList.contains('open'));
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!menu.contains(e.target) && !pulse.contains(e.target)) setOpen(false);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') setOpen(false);
+  });
+
+  var rows = document.querySelectorAll('.row');
+  rows.forEach(function (r) {
+    r.addEventListener('click', function () {
+      var title = r.getAttribute('data-title');
+      toast.textContent = '↗  Opening “' + title + '” — snapping the window back…';
+      toast.classList.add('show');
+      setOpen(false);
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(function () { toast.classList.remove('show'); }, 2800);
+    });
+  });
+</script>
+</body>
+</html>
