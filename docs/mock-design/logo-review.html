@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sacred Terminal · Logo review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="tokens.css" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background:
+      radial-gradient(circle at 1px 1px, rgba(255,255,255,.045) 1px, transparent 1.6px) 0 0 / 23px 23px,
+      var(--bg);
+    color: var(--text);
+    font-family: var(--ui);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 72px 48px 96px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 13px; color: var(--text-faint);
+    letter-spacing: .04em; text-transform: uppercase; margin-bottom: 18px;
+  }
+  h1 {
+    font-weight: 800; font-size: clamp(34px, 4.5vw, 52px); line-height: 1.05;
+    letter-spacing: -.03em; max-width: 18ch;
+  }
+  .lede {
+    margin-top: 18px; max-width: 640px; font-size: 16px; line-height: 1.55;
+    color: var(--text-dim);
+  }
+  .lede code {
+    font-family: var(--mono); font-size: 13px; padding: 1px 6px; border-radius: 4px;
+    background: rgba(255,255,255,.06);
+  }
+  .ref-block {
+    margin-top: 28px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+    padding: 16px; border: 1px solid var(--border); border-radius: 12px;
+    background: rgba(255,255,255,.02);
+  }
+  .ref-block img {
+    width: 160px; height: 160px; object-fit: cover; border-radius: 50%;
+    border: 2px solid rgba(94, 180, 255, 0.25);
+    box-shadow: 0 0 24px rgba(62, 197, 255, 0.15);
+  }
+  .ref-block p { flex: 1; min-width: 220px; font-size: 13px; color: var(--text-dim); line-height: 1.55; }
+  .grid.sacred { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 900px) { .grid.sacred { grid-template-columns: 1fr; } }
+  .note {
+    margin-top: 28px; padding: 14px 16px; border-radius: 10px;
+    border: 1px solid var(--border); background: rgba(255,255,255,.02);
+    font-size: 13px; color: var(--text-dim); line-height: 1.5;
+  }
+  .note b { color: var(--text); font-weight: 600; }
+
+  .section { margin-top: 56px; }
+  .section-head { margin-bottom: 20px; }
+  .section-head h2 {
+    font-size: 20px; font-weight: 700; letter-spacing: -.02em;
+  }
+  .section-head p {
+    margin-top: 6px; font-size: 13px; color: var(--text-dim); max-width: 560px; line-height: 1.5;
+  }
+  .grid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;
+  }
+  .grid.simple {
+    grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;
+  }
+  @media (max-width: 900px) {
+    .grid, .grid.simple { grid-template-columns: 1fr; }
+  }
+  .grid.simple .card-desc { font-size: 12px; padding-bottom: 12px; }
+  .grid.simple .hero-mark { padding: 28px 16px; }
+  .grid.simple .hero-mark svg { width: 96px; height: 96px; }
+  .grid.simple .sizes { grid-template-columns: repeat(3, 1fr); }
+  .grid.simple .size-cell:nth-child(3) { border-right: none; }
+  .grid.simple .size-cell:nth-child(4) { display: none; }
+
+  .card {
+    border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+    background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.01));
+  }
+  .card-head {
+    padding: 18px 20px 14px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  }
+  .card-head h2 { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+  .tag {
+    font-family: var(--mono); font-size: 10px; color: var(--text-faint);
+    padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .tag.rec { color: var(--orange); border-color: rgba(250,179,135,.35); }
+  .card-desc {
+    padding: 0 20px 16px; font-size: 12.5px; line-height: 1.5; color: var(--text-dim);
+  }
+  .hero-mark {
+    display: grid; place-items: center; padding: 36px 20px;
+    background: #fff;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  }
+  .hero-mark svg { width: 128px; height: 128px; display: block; }
+
+  .sizes {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+    border-top: none;
+    background: #fff;
+  }
+  .size-cell {
+    padding: 16px 10px; text-align: center; border-right: 1px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+  }
+  .size-cell:last-child { border-right: none; }
+  .size-cell span {
+    display: block; font-family: var(--mono); font-size: 10px; color: #888; margin-top: 8px;
+  }
+  .size-cell svg { display: block; margin: 0 auto; }
+
+  .context { margin-top: 56px; }
+  .context h3 {
+    font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--text-faint); margin-bottom: 16px;
+  }
+  .context-row { display: flex; flex-wrap: wrap; gap: 16px; }
+  .ctx {
+    flex: 1; min-width: 260px; border: 1px solid var(--border); border-radius: 12px;
+    overflow: hidden; background: var(--chrome-bg);
+  }
+  .ctx-label {
+    padding: 10px 14px; font-size: 11px; color: var(--text-faint);
+    border-bottom: 1px solid var(--border); font-family: var(--mono);
+  }
+  .ctx-body { padding: 18px 16px; }
+
+  .mock-titlebar {
+    height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 12px;
+    background: var(--titlebar-bg); border: 1px solid var(--border); border-radius: 8px;
+  }
+  .traffic { display: flex; gap: 6px; margin-right: 4px; }
+  .traffic i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+  .traffic i:nth-child(1) { background: #ff5f57; }
+  .traffic i:nth-child(2) { background: #febc2e; }
+  .traffic i:nth-child(3) { background: #28c840; }
+  .mock-titlebar .app-name { font-size: 12px; color: var(--text-dim); margin-left: 4px; }
+  .mock-titlebar .crumb {
+    margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--text-faint);
+  }
+  .mock-titlebar svg { width: 20px; height: 20px; flex: 0 0 20px; }
+
+  .mock-dock {
+    display: flex; gap: 10px; padding: 10px 14px; border-radius: 14px;
+    background: rgba(255,255,255,.08); backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,.1); width: fit-content;
+  }
+  .dock-icon { position: relative; }
+  .dock-icon svg { display: block; width: 64px; height: 64px; border-radius: 18%; }
+  .dock-dot {
+    position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%);
+    width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,.55);
+  }
+
+  .mock-tray {
+    display: inline-flex; align-items: center; gap: 10px; padding: 4px 10px;
+    border-radius: 6px; background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.08);
+  }
+  .mock-tray svg { width: 18px; height: 18px; opacity: .92; }
+
+  .pick {
+    margin-top: 56px; padding: 22px 24px; border-radius: 14px;
+    border: 1px solid rgba(250,179,135,.25);
+    background: linear-gradient(135deg, rgba(250,179,135,.06), rgba(140,170,238,.04));
+  }
+  .pick h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+  .pick p { font-size: 13px; color: var(--text-dim); line-height: 1.55; max-width: 720px; }
+  .pick ul {
+    margin-top: 12px; padding-left: 18px; font-size: 13px; color: var(--text-dim); line-height: 1.6;
+  }
+  .pick .rec-name { color: var(--orange); font-weight: 600; }
+  .footer {
+    margin-top: 48px; font-family: var(--mono); font-size: 11px; color: var(--text-faint);
+  }
+  .footer a { color: var(--orange); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Brand · draft</div>
+  <h1>Sacred Terminal logo review</h1>
+  <p class="lede">
+    Marks for review — including a <strong style="font-weight:600;color:var(--text)">Sacred Timeline</strong> direction
+    from your reference. Preview canvas is white so dark app squares read clearly.
+    File: <code>docs/mock-design/logo-review.html</code>
+  </p>
+  <div class="ref-block">
+    <img src="assets/reference-sacred-tree.png" alt="Reference: branching energy tree through a circular portal" />
+    <p>
+      <b style="color:var(--text)">Your reference.</b> Glowing fractal branches from a horizontal trunk,
+      electric blue with magenta filaments, viewed through a dark circular portal.
+      App icons below simplify that into vector marks that still read at 16&nbsp;px.
+    </p>
+  </div>
+  <div class="note">
+    <b>Brief.</b> Sacred tree icons use cyan <code>#5dd4ff</code>, blue <code>#2a8cff</code>, magenta <code>#e879c9</code>
+    on deep navy <code>#060612</code>. Orange terminal accent stays separate in the app UI.
+  </div>
+
+  <section class="section">
+    <div class="section-head">
+      <h2>Sacred tree · from reference</h2>
+      <p>Branching timeline energy — portal, trunk, and filaments. Pick a complexity level.</p>
+    </div>
+    <div class="grid sacred">
+
+    <article class="card">
+      <div class="card-head"><h2>M · Portal</h2><span class="tag rec">Closest match</span></div>
+      <p class="card-desc">Circular viewport + glowing trunk + fractal branches. Full reference composition.</p>
+      <div class="hero-mark"><svg viewBox="0 0 128 128"><use href="#logo-m"/></svg></div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="128" height="128" viewBox="0 0 128 128"><use href="#logo-m"/></svg><span>128px</span></div>
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-m"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-m"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-m"/></svg><span>16px</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-head"><h2>N · Timeline</h2><span class="tag rec">App icon</span></div>
+      <p class="card-desc">Tree only — no portal ring. Cleaner at Dock size; same energy palette.</p>
+      <div class="hero-mark"><svg viewBox="0 0 128 128"><use href="#logo-n"/></svg></div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="128" height="128" viewBox="0 0 128 128"><use href="#logo-n"/></svg><span>128px</span></div>
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-n"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-n"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-n"/></svg><span>16px</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-head"><h2>O · Filament</h2><span class="tag">Minimal tree</span></div>
+      <p class="card-desc">Three branches + trunk. Simplest version that still feels &ldquo;sacred&rdquo;.</p>
+      <div class="hero-mark"><svg viewBox="0 0 128 128"><use href="#logo-o"/></svg></div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="128" height="128" viewBox="0 0 128 128"><use href="#logo-o"/></svg><span>128px</span></div>
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-o"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-o"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-o"/></svg><span>16px</span></div>
+      </div>
+    </article>
+
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <h2>Simple marks</h2>
+      <p>One or two shapes on a dark rounded square. Start here.</p>
+    </div>
+    <div class="grid simple">
+
+    <article class="card">
+      <div class="card-head"><h2>E · Cursor</h2><span class="tag rec">Top pick</span></div>
+      <p class="card-desc">Single block cursor. Reads as terminal instantly.</p>
+      <div class="hero-mark"><svg viewBox="0 0 128 128"><use href="#logo-e"/></svg></div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-e"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-e"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-e"/></svg><span>16px</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-head"><h2>F · Rail</h2><span class="tag rec">Top pick</span></div>
+      <p class="card-desc">One vertical bar. Side-rail layout in a single stroke.</p>
+      <div class="hero-mark"><svg viewBox="0 0 128 128"><use href="#logo-f"/></svg></div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-f"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-f"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-f"/></svg><span>16px</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-head"><h2>G · Dot</h2><span class="tag">Pulse</span></div>
+      <p class="card-desc">One dot. Quiet; pairs with the menu-bar monitor.</p>
+      <div class="hero-mark"><svg viewBox="0 0 128 128"><use href="#logo-g"/></svg></div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-g"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-g"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-g"/></svg><span>16px</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-head"><h2>H · Prompt</h2><span class="tag">Terminal</span></div>
+      <p class="card-desc">Chevron only. Shell waiting for input.</p>
+      <div class="hero-mark"><svg viewBox="0 0 128 128"><use href="#logo-h"/></svg></div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-h"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-h"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-h"/></svg><span>16px</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-head"><h2>I · Underscore</h2><span class="tag">Minimal</span></div>
+      <p class="card-desc">One horizontal bar. Blinking cursor at rest.</p>
+      <div class="hero-mark"><svg viewBox="0 0 128 128"><use href="#logo-i"/></svg></div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-i"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-i"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-i"/></svg><span>16px</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-head"><h2>J · Split</h2><span class="tag">Layout</span></div>
+      <p class="card-desc">Two panels, no detail. Rail + main pane.</p>
+      <div class="hero-mark"><svg viewBox="0 0 128 128"><use href="#logo-j"/></svg></div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-j"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-j"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-j"/></svg><span>16px</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-head"><h2>K · Ring</h2><span class="tag">Calm</span></div>
+      <p class="card-desc">One circle stroke. Halo without fill noise.</p>
+      <div class="hero-mark"><svg viewBox="0 0 128 128"><use href="#logo-k"/></svg></div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-k"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-k"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-k"/></svg><span>16px</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-head"><h2>L · Corner</h2><span class="tag">Glyph</span></div>
+      <p class="card-desc">L-bracket. Terminal frame, one continuous path.</p>
+      <div class="hero-mark"><svg viewBox="0 0 128 128"><use href="#logo-l"/></svg></div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-l"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-l"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-l"/></svg><span>16px</span></div>
+      </div>
+    </article>
+
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <h2>Earlier · detailed</h2>
+      <p>Richer compositions from the first pass. Compare against the simple set above.</p>
+    </div>
+  <div class="grid">
+    <article class="card">
+      <div class="card-head">
+        <h2>A · Sanctuary cursor</h2>
+        <span class="tag">Detailed</span>
+      </div>
+      <p class="card-desc">
+        Left rail + block cursor inside a soft halo. Reads as &ldquo;sacred workspace&rdquo;
+        without liturgical imagery. Orange cursor ties to active-session accent.
+      </p>
+      <div class="hero-mark">
+        <svg viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Logo A">
+          <defs>
+            <linearGradient id="bgA" x1="16" y1="8" x2="112" y2="120">
+              <stop stop-color="#131316"/><stop offset="1" stop-color="#0a0a0c"/>
+            </linearGradient>
+            <radialGradient id="glowA" cx="50%" cy="52%" r="50%">
+              <stop stop-color="#fab387" stop-opacity=".22"/>
+              <stop offset="1" stop-color="#fab387" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <rect width="128" height="128" rx="28" fill="url(#bgA)"/>
+          <rect x="0.75" y="0.75" width="126.5" height="126.5" rx="27" stroke="#2a2a30" stroke-width="1.5"/>
+          <circle cx="64" cy="64" r="46" fill="url(#glowA)"/>
+          <rect x="34" y="28" width="10" height="72" rx="3" fill="#2a2a30"/>
+          <rect x="52" y="44" width="46" height="10" rx="2" fill="#fab387"/>
+          <rect x="52" y="60" width="28" height="8" rx="2" fill="#8a8a93" opacity=".55"/>
+          <rect x="52" y="74" width="36" height="8" rx="2" fill="#8a8a93" opacity=".35"/>
+        </svg>
+      </div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="128" height="128" viewBox="0 0 128 128"><use href="#logo-a"/></svg><span>128px</span></div>
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-a"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-a"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-a"/></svg><span>16px</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-head">
+        <h2>B · Pulse chamber</h2>
+        <span class="tag">Menu-bar kin</span>
+      </div>
+      <p class="card-desc">
+        Rounded square with inner ring and spoke &mdash; echoes the always-running pulse
+        in the menu bar, but enclosed as an app icon.
+      </p>
+      <div class="hero-mark">
+        <svg viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Logo B">
+          <defs>
+            <linearGradient id="bgB" x1="20" y1="12" x2="108" y2="116">
+              <stop stop-color="#141418"/><stop offset="1" stop-color="#0a0a0c"/>
+            </linearGradient>
+          </defs>
+          <rect width="128" height="128" rx="28" fill="url(#bgB)"/>
+          <rect x="0.75" y="0.75" width="126.5" height="126.5" rx="27" stroke="#2a2a30" stroke-width="1.5"/>
+          <circle cx="64" cy="64" r="34" stroke="#fab387" stroke-width="2.5" opacity=".55"/>
+          <circle cx="64" cy="64" r="22" stroke="#e6e6ea" stroke-width="1.5" opacity=".25"/>
+          <g stroke="#e6e6ea" stroke-width="2.8" stroke-linecap="round" opacity=".88">
+            <path d="M64 36v10"/><path d="M64 82v10"/>
+            <path d="M36 64h10"/><path d="M82 64h10"/>
+            <path d="M44.2 44.2l7 7"/><path d="M76.8 76.8l7 7"/>
+            <path d="M83.8 44.2l-7 7"/><path d="M51.2 76.8l-7 7"/>
+          </g>
+          <circle cx="64" cy="64" r="5" fill="#fab387"/>
+        </svg>
+      </div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="128" height="128" viewBox="0 0 128 128"><use href="#logo-b"/></svg><span>128px</span></div>
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-b"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-b"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-b"/></svg><span>16px</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-head">
+        <h2>C · ST monogram</h2>
+        <span class="tag">Wordmark-friendly</span>
+      </div>
+      <p class="card-desc">
+        Blocky monospace initials. Strong at large sizes and Dock; slightly less distinct
+        at 16&nbsp;px unless simplified further.
+      </p>
+      <div class="hero-mark">
+        <svg viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Logo C">
+          <rect width="128" height="128" rx="28" fill="#0a0a0c"/>
+          <rect x="0.75" y="0.75" width="126.5" height="126.5" rx="27" stroke="#2a2a30" stroke-width="1.5"/>
+          <path d="M38 36h22v8H50v48h-12V36z" fill="#e6e6ea"/>
+          <path d="M68 36h22v8H80v20h8c12 0 18 5 18 14s-6 14-18 14H68V36zm12 8v20h8c5 0 8-2 8-6s-3-6-8-6h-8z" fill="#fab387"/>
+        </svg>
+      </div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="128" height="128" viewBox="0 0 128 128"><use href="#logo-c"/></svg><span>128px</span></div>
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-c"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-c"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-c"/></svg><span>16px</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="card-head">
+        <h2>D · Split pane</h2>
+        <span class="tag">Layout literal</span>
+      </div>
+      <p class="card-desc">
+        Minimal window: rail stripe + caret. Most literal cmux/split layout reference;
+        quieter personality.
+      </p>
+      <div class="hero-mark">
+        <svg viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Logo D">
+          <rect width="128" height="128" rx="28" fill="#131316"/>
+          <rect x="0.75" y="0.75" width="126.5" height="126.5" rx="27" stroke="#2a2a30" stroke-width="1.5"/>
+          <rect x="24" y="24" width="80" height="80" rx="10" stroke="#2a2a30" stroke-width="2"/>
+          <rect x="24" y="24" width="22" height="80" rx="10" fill="#16161a"/>
+          <rect x="46" y="24" width="58" height="80" fill="#0e0e11"/>
+          <rect x="54" y="58" width="14" height="18" rx="1" fill="#fab387"/>
+          <path d="M68 58h18M68 68h12" stroke="#8a8a93" stroke-width="2" stroke-linecap="round" opacity=".5"/>
+        </svg>
+      </div>
+      <div class="sizes">
+        <div class="size-cell"><svg width="128" height="128" viewBox="0 0 128 128"><use href="#logo-d"/></svg><span>128px</span></div>
+        <div class="size-cell"><svg width="64" height="64" viewBox="0 0 128 128"><use href="#logo-d"/></svg><span>64px</span></div>
+        <div class="size-cell"><svg width="32" height="32" viewBox="0 0 128 128"><use href="#logo-d"/></svg><span>32px</span></div>
+        <div class="size-cell"><svg width="16" height="16" viewBox="0 0 128 128"><use href="#logo-d"/></svg><span>16px</span></div>
+      </div>
+    </article>
+  </div>
+  </section>
+
+  <section class="context">
+    <h3>In context (N · Timeline)</h3>
+    <div class="context-row">
+      <div class="ctx">
+        <div class="ctx-label">Titlebar · 20px</div>
+        <div class="ctx-body">
+          <div class="mock-titlebar">
+            <div class="traffic"><i></i><i></i><i></i></div>
+            <svg viewBox="0 0 128 128" fill="none"><use href="#logo-n"/></svg>
+            <span class="app-name">Sacred Terminal</span>
+            <span class="crumb">orchestrator › Loop over issues…</span>
+          </div>
+        </div>
+      </div>
+      <div class="ctx">
+        <div class="ctx-label">Dock · 64px</div>
+        <div class="ctx-body">
+          <div class="mock-dock">
+            <div class="dock-icon"><svg viewBox="0 0 128 128"><use href="#logo-m"/></svg><span class="dock-dot"></span></div>
+            <div class="dock-icon"><svg viewBox="0 0 128 128"><use href="#logo-n"/></svg></div>
+            <div class="dock-icon"><svg viewBox="0 0 128 128"><use href="#logo-o"/></svg></div>
+          </div>
+        </div>
+      </div>
+      <div class="ctx">
+        <div class="ctx-label">Menu bar tray · 18px</div>
+        <div class="ctx-body">
+          <div class="mock-tray">
+            <svg viewBox="0 0 128 128" fill="none"><use href="#logo-n"/></svg>
+            <span style="font:500 11px var(--mono);color:var(--text-dim)">3 working · 1 needs you</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pick">
+    <h3>Recommendation</h3>
+    <p>
+      For the reference look: <span class="rec-name">N · Timeline</span> as the primary Dock icon
+      (tree reads clearly at 32&nbsp;px). Use <span class="rec-name">M · Portal</span> for marketing /
+      about screen where the circular viewport can breathe.
+    </p>
+    <ul>
+      <li><b>M</b> — closest to your reference; best at 128px+</li>
+      <li><b>N</b> — best balance for macOS app icon + titlebar</li>
+      <li><b>O</b> — fallback if N feels busy in the Dock</li>
+    </ul>
+  </section>
+
+  <p class="footer">
+    Preview: run <code>python3 -m http.server 8765</code> in <code>docs/mock-design</code> →
+    <a href="logo-review.html">logo-review.html</a>
+  </p>
+</div>
+
+<!-- reusable symbol defs for size previews + context -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="st-trunk" x1="0" y1="0" x2="128" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1a6fd4" stop-opacity="0"/>
+      <stop offset="12%" stop-color="#5dd4ff"/>
+      <stop offset="50%" stop-color="#ffffff"/>
+      <stop offset="88%" stop-color="#5dd4ff"/>
+      <stop offset="100%" stop-color="#1a6fd4" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="st-branch" x1="64" y1="80" x2="64" y2="20" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5dd4ff"/>
+      <stop offset="45%" stop-color="#2a8cff"/>
+      <stop offset="100%" stop-color="#e879c9"/>
+    </linearGradient>
+    <linearGradient id="st-branch2" x1="64" y1="80" x2="20" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5dd4ff"/>
+      <stop offset="100%" stop-color="#c855a0"/>
+    </linearGradient>
+    <linearGradient id="st-branch3" x1="64" y1="80" x2="108" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5dd4ff"/>
+      <stop offset="100%" stop-color="#ff6ec7"/>
+    </linearGradient>
+    <radialGradient id="st-nebula" cx="50%" cy="55%" r="50%">
+      <stop offset="0%" stop-color="#2a8cff" stop-opacity=".35"/>
+      <stop offset="55%" stop-color="#0a1840" stop-opacity=".5"/>
+      <stop offset="100%" stop-color="#060612" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="st-flare" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity=".9"/>
+      <stop offset="100%" stop-color="#5dd4ff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="st-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="st-glow-soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- M · Portal — circular viewport + full tree -->
+  <symbol id="logo-m" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#060612"/>
+    <rect width="128" height="128" rx="28" fill="url(#st-nebula)"/>
+    <circle cx="64" cy="56" r="44" fill="none" stroke="#1a3055" stroke-width="5"/>
+    <circle cx="64" cy="56" r="41" fill="#04040e"/>
+    <circle cx="64" cy="56" r="41" fill="url(#st-nebula)"/>
+    <ellipse cx="64" cy="72" rx="36" ry="6" fill="url(#st-flare)" opacity=".35"/>
+    <g filter="url(#st-glow-soft)">
+      <path d="M14 74 Q64 68 114 74" stroke="url(#st-trunk)" stroke-width="5" stroke-linecap="round" fill="none"/>
+    </g>
+    <path d="M14 74 Q64 68 114 74" stroke="url(#st-trunk)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <g filter="url(#st-glow)" stroke-linecap="round" fill="none">
+      <path d="M64 72 Q58 48 54 26" stroke="url(#st-branch)" stroke-width="2.2"/>
+      <path d="M54 72 Q42 52 30 34" stroke="url(#st-branch2)" stroke-width="1.8"/>
+      <path d="M48 73 Q38 58 28 44" stroke="url(#st-branch2)" stroke-width="1.2" opacity=".8"/>
+      <path d="M72 72 Q84 50 92 28" stroke="url(#st-branch3)" stroke-width="2"/>
+      <path d="M80 73 Q92 58 102 40" stroke="url(#st-branch3)" stroke-width="1.5"/>
+      <path d="M88 74 Q98 62 106 50" stroke="url(#st-branch3)" stroke-width="1" opacity=".75"/>
+      <path d="M58 71 Q52 62 46 54" stroke="#e879c9" stroke-width=".9" opacity=".7"/>
+      <path d="M70 71 Q76 60 82 50" stroke="#ff6ec7" stroke-width=".9" opacity=".7"/>
+      <path d="M54 40 Q50 34 46 28" stroke="#c855a0" stroke-width=".7" opacity=".65"/>
+      <path d="M90 36 Q94 30 98 24" stroke="#e879c9" stroke-width=".7" opacity=".65"/>
+    </g>
+    <circle cx="64" cy="56" r="43" fill="none" stroke="#3a7cc4" stroke-width="1" opacity=".35"/>
+  </symbol>
+
+  <!-- N · Timeline — tree on navy square, no portal -->
+  <symbol id="logo-n" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#060612"/>
+    <rect width="128" height="128" rx="28" fill="url(#st-nebula)"/>
+    <ellipse cx="64" cy="76" rx="42" ry="8" fill="url(#st-flare)" opacity=".28"/>
+    <g filter="url(#st-glow-soft)">
+      <path d="M10 78 Q64 71 118 78" stroke="url(#st-trunk)" stroke-width="6" stroke-linecap="round" fill="none"/>
+    </g>
+    <path d="M10 78 Q64 71 118 78" stroke="url(#st-trunk)" stroke-width="3" stroke-linecap="round" fill="none"/>
+    <g filter="url(#st-glow)" stroke-linecap="round" fill="none">
+      <path d="M64 76 Q59 46 56 22" stroke="url(#st-branch)" stroke-width="2.4"/>
+      <path d="M52 76 Q38 54 26 30" stroke="url(#st-branch2)" stroke-width="2"/>
+      <path d="M44 77 Q32 64 22 48" stroke="url(#st-branch2)" stroke-width="1.3" opacity=".85"/>
+      <path d="M76 76 Q90 52 98 26" stroke="url(#st-branch3)" stroke-width="2.2"/>
+      <path d="M86 77 Q98 60 108 42" stroke="url(#st-branch3)" stroke-width="1.4"/>
+      <path d="M94 78 Q104 66 112 54" stroke="#ff6ec7" stroke-width="1" opacity=".8"/>
+      <path d="M60 74 Q54 64 48 56" stroke="#e879c9" stroke-width="1" opacity=".75"/>
+      <path d="M72 74 Q78 62 84 52" stroke="#e879c9" stroke-width="1" opacity=".75"/>
+    </g>
+  </symbol>
+
+  <!-- O · Filament — three branches, bold strokes -->
+  <symbol id="logo-o" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#060612"/>
+    <path d="M8 82 Q64 76 120 82" stroke="url(#st-trunk)" stroke-width="5" stroke-linecap="round" fill="none" filter="url(#st-glow-soft)"/>
+    <path d="M8 82 Q64 76 120 82" stroke="url(#st-trunk)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <g stroke-linecap="round" fill="none" filter="url(#st-glow)">
+      <path d="M64 80 Q58 48 52 24" stroke="url(#st-branch)" stroke-width="3"/>
+      <path d="M48 80 Q32 56 24 36" stroke="url(#st-branch2)" stroke-width="2.5"/>
+      <path d="M80 80 Q96 54 104 32" stroke="url(#st-branch3)" stroke-width="2.5"/>
+    </g>
+  </symbol>
+
+  <!-- simple marks -->
+  <symbol id="logo-e" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#0a0a0c"/>
+    <rect x="44" y="36" width="40" height="56" rx="2" fill="#fab387"/>
+  </symbol>
+  <symbol id="logo-f" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#0a0a0c"/>
+    <rect x="36" y="32" width="14" height="64" rx="3" fill="#fab387"/>
+  </symbol>
+  <symbol id="logo-g" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#0a0a0c"/>
+    <circle cx="64" cy="64" r="18" fill="#fab387"/>
+  </symbol>
+  <symbol id="logo-h" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#0a0a0c"/>
+    <path d="M48 40l32 24-32 24V40z" fill="#fab387"/>
+  </symbol>
+  <symbol id="logo-i" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#0a0a0c"/>
+    <rect x="32" y="58" width="64" height="12" rx="2" fill="#fab387"/>
+  </symbol>
+  <symbol id="logo-j" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#0a0a0c"/>
+    <rect x="32" y="32" width="28" height="64" rx="4" fill="#2a2a30"/>
+    <rect x="68" y="32" width="28" height="64" rx="4" fill="#fab387" fill-opacity=".85"/>
+  </symbol>
+  <symbol id="logo-k" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#0a0a0c"/>
+    <circle cx="64" cy="64" r="28" stroke="#fab387" stroke-width="6" fill="none"/>
+  </symbol>
+  <symbol id="logo-l" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#0a0a0c"/>
+    <path d="M44 36v56h48" stroke="#fab387" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </symbol>
+  <!-- detailed marks -->
+  <symbol id="logo-a" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#131316"/>
+    <rect x="0.75" y="0.75" width="126.5" height="126.5" rx="27" stroke="#2a2a30" stroke-width="1.5"/>
+    <circle cx="64" cy="64" r="46" fill="#fab387" fill-opacity=".12"/>
+    <rect x="34" y="28" width="10" height="72" rx="3" fill="#2a2a30"/>
+    <rect x="52" y="44" width="46" height="10" rx="2" fill="#fab387"/>
+    <rect x="52" y="60" width="28" height="8" rx="2" fill="#8a8a93" opacity=".55"/>
+    <rect x="52" y="74" width="36" height="8" rx="2" fill="#8a8a93" opacity=".35"/>
+  </symbol>
+  <symbol id="logo-b" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#141418"/>
+    <rect x="0.75" y="0.75" width="126.5" height="126.5" rx="27" stroke="#2a2a30" stroke-width="1.5"/>
+    <circle cx="64" cy="64" r="34" stroke="#fab387" stroke-width="2.5" opacity=".55"/>
+    <circle cx="64" cy="64" r="22" stroke="#e6e6ea" stroke-width="1.5" opacity=".25"/>
+    <g stroke="#e6e6ea" stroke-width="2.8" stroke-linecap="round" opacity=".88">
+      <path d="M64 36v10"/><path d="M64 82v10"/>
+      <path d="M36 64h10"/><path d="M82 64h10"/>
+      <path d="M44.2 44.2l7 7"/><path d="M76.8 76.8l7 7"/>
+      <path d="M83.8 44.2l-7 7"/><path d="M51.2 76.8l-7 7"/>
+    </g>
+    <circle cx="64" cy="64" r="5" fill="#fab387"/>
+  </symbol>
+  <symbol id="logo-c" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#0a0a0c"/>
+    <rect x="0.75" y="0.75" width="126.5" height="126.5" rx="27" stroke="#2a2a30" stroke-width="1.5"/>
+    <path d="M38 36h22v8H50v48h-12V36z" fill="#e6e6ea"/>
+    <path d="M68 36h22v8H80v20h8c12 0 18 5 18 14s-6 14-18 14H68V36zm12 8v20h8c5 0 8-2 8-6s-3-6-8-6h-8z" fill="#fab387"/>
+  </symbol>
+  <symbol id="logo-d" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="#131316"/>
+    <rect x="0.75" y="0.75" width="126.5" height="126.5" rx="27" stroke="#2a2a30" stroke-width="1.5"/>
+    <rect x="24" y="24" width="80" height="80" rx="10" stroke="#2a2a30" stroke-width="2"/>
+    <rect x="24" y="24" width="22" height="80" rx="10" fill="#16161a"/>
+    <rect x="46" y="24" width="58" height="80" fill="#0e0e11"/>
+    <rect x="54" y="58" width="14" height="18" rx="1" fill="#fab387"/>
+    <path d="M68 58h18M68 68h12" stroke="#8a8a93" stroke-width="2" stroke-linecap="round" opacity=".5"/>
+  </symbol>
+</svg>
+</body>
+</html>

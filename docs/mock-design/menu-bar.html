@@ -148,7 +148,8 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .row .sub { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
-  .row .ident { width: 22px; flex: 0 0 22px; display: grid; place-items: center; font-family: var(--mono); font-size: 15px; }
+  .row .ident { width: 22px; flex: 0 0 22px; display: grid; place-items: center; }
+  .row .ident svg { display: block; }
 
   /* per-row working spinner */
   .mini {
@@ -175,6 +176,8 @@
   .ident.green  { color: var(--green); }
   .ident.pink   { color: var(--pink); }
 
+  .appicon svg { display: block; opacity: .75; }
+
   /* caption under stage */
   .caption {
     text-align: center; font-family: var(--mono); font-size: 12px;
@@ -192,6 +195,7 @@
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 </style>
+<link rel="stylesheet" href="icons.css" />
 </head>
 <body>
   <div class="wrap">
@@ -240,37 +244,37 @@
         <div class="menu open" id="menu">
           <div class="caret"></div>
 
-          <div class="row active" data-title="I'm thinking about re-factoring the session host">
+          <div class="row active" data-title="I'm thinking about re-factoring the session host" data-agent="claude">
             <span class="lead"><span class="mini c-orange"></span></span>
             <span class="body">
               <div class="title">I&rsquo;m thinking about re-factoring the session host&hellip;</div>
               <div class="sub">the-sacred-terminal</div>
             </span>
-            <span class="ident orange">&#10037;</span>
+            <span class="ident orange" data-icon="claude"></span>
           </div>
 
-          <div class="row" data-title="can you set up this as a monorepo with turborepo">
+          <div class="row" data-title="can you set up this as a monorepo with turborepo" data-agent="codex">
             <span class="lead"><span class="mini c-green"></span></span>
             <span class="body">
               <div class="title">can you set up this as a monorepo with turborepo&hellip;</div>
               <div class="sub">storepilot</div>
             </span>
-            <span class="ident green">&#11041;</span>
+            <span class="ident green" data-icon="codex"></span>
           </div>
 
-          <div class="row" data-title="Audit the checkout flow for a11y regressions">
+          <div class="row" data-title="Audit the checkout flow for a11y regressions" data-agent="gemini">
             <span class="lead"><span class="mini c-blue"></span></span>
             <span class="body">
               <div class="title">Audit the checkout flow for a11y regressions</div>
               <div class="sub">acme-storefront</div>
             </span>
-            <span class="ident pink">&#10022;</span>
+            <span class="ident pink" data-icon="gemini"></span>
           </div>
 
           <div class="sep"></div>
 
-          <div class="row" data-title="Bump deps and fix the type errors">
-            <span class="lead"><span class="appicon">&#9633;</span></span>
+          <div class="row" data-title="Bump deps and fix the type errors" data-agent="codex">
+            <span class="lead"><span class="appicon" data-icon="doc"></span></span>
             <span class="body">
               <div class="title">Bump deps and fix the type errors</div>
               <div class="sub">design-system &middot; needs your input</div>
@@ -287,11 +291,22 @@
 
   <div class="toast" id="toast"></div>
 
+<script src="icons.js"></script>
 <script>
   var pulse = document.getElementById('pulse');
   var menu  = document.getElementById('menu');
   var toast = document.getElementById('toast');
   var hideTimer;
+
+  document.querySelectorAll('[data-icon]').forEach(function (el) {
+    var key = el.getAttribute('data-icon');
+    if (key === 'doc') {
+      el.insertAdjacentHTML('beforeend',
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#b9b9c4" stroke-width="1.3"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6"/></svg>');
+    } else {
+      el.insertAdjacentHTML('beforeend', SacredIcons.agentIcon(key, 15));
+    }
+  });
 
   function setOpen(open) {
     menu.classList.toggle('open', open);
@@ -314,7 +329,7 @@
   rows.forEach(function (r) {
     r.addEventListener('click', function () {
       var title = r.getAttribute('data-title');
-      toast.textContent = '↗  Opening “' + title + '” — snapping the window back…';
+      toast.textContent = 'Opening "' + title + '" — snapping the window back…';
       toast.classList.add('show');
       setOpen(false);
       clearTimeout(hideTimer);

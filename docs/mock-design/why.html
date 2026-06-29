@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Why Sacred · The Sacred Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="tokens.css" />
+<link rel="stylesheet" href="icons.css" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background:
+      radial-gradient(circle at 1px 1px, rgba(255,255,255,.045) 1px, transparent 1.6px) 0 0 / 23px 23px,
+      var(--bg);
+    color: var(--text);
+    font-family: var(--ui);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  .wrap {
+    max-width: 1280px; margin: 0 auto;
+    padding: 80px 56px 60px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 64px;
+    align-items: center;
+  }
+  @media (max-width: 960px) {
+    .wrap { grid-template-columns: 1fr; gap: 48px; padding: 48px 24px; }
+  }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 14px; color: var(--text-faint);
+    letter-spacing: .02em; margin-bottom: 24px;
+  }
+  h1 {
+    font-weight: 800; font-size: clamp(36px, 4.5vw, 52px); line-height: 1.08;
+    letter-spacing: -.025em; color: var(--text);
+  }
+  .lede { margin-top: 28px; display: flex; flex-direction: column; gap: 18px; }
+  .lede p {
+    font-size: clamp(16px, 1.5vw, 18px); line-height: 1.6; color: var(--text-dim);
+  }
+  .lede b { color: var(--text); font-weight: 600; }
+
+  /* Mini app mock */
+  .mock-window {
+    background: var(--chrome-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-window);
+    overflow: hidden;
+    box-shadow: 0 40px 100px rgba(0,0,0,.55);
+  }
+  .mock-titlebar {
+    height: 34px; display: flex; align-items: center; gap: 8px;
+    padding: 0 12px; background: var(--titlebar-bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .mock-titlebar .lights { display: flex; gap: 6px; }
+  .mock-titlebar .light { width: 10px; height: 10px; border-radius: 50%; }
+  .mock-titlebar .light.r { background: #ff5f57; }
+  .mock-titlebar .light.y { background: #febc2e; }
+  .mock-titlebar .light.g { background: #28c840; }
+  .mock-titlebar .wtitle { font-size: 12px; font-weight: 600; margin-left: 4px; }
+  .mock-titlebar .wtitle .swatch { color: var(--orange); display: inline-flex; align-items: center; }
+
+  .mock-body { display: flex; min-height: 340px; }
+  .mock-rail {
+    width: 200px; flex: 0 0 200px;
+    background: var(--rail-bg);
+    border-right: 1px solid var(--border);
+    padding: 10px 8px;
+  }
+  .mock-folder {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px; border-radius: 8px; font-size: 12.5px; font-weight: 600;
+    color: var(--text); position: relative;
+  }
+  .mock-folder.dim { color: var(--text-dim); font-weight: 500; }
+  .mock-folder.hover { background: var(--hover); }
+  .mock-folder .pill-bar {
+    position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    display: flex; align-items: center; gap: 2px;
+    padding: 3px 5px; border-radius: var(--radius-pill);
+    background: rgba(22,22,28,.95); border: 1px solid rgba(255,255,255,.1);
+    box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  }
+  .mock-folder .folder-icon { display: inline-flex; flex: 0 0 14px; color: var(--text-dim); }
+  .mock-folder .pill-bar span {
+    width: 22px; height: 22px; border-radius: 50%;
+    display: grid; place-items: center;
+  }
+  .mock-folder .pill-bar span svg { display: block; }
+  .mock-folder .pill-bar span.hl { background: rgba(255,255,255,.1); }
+  .mock-task {
+    padding: 5px 8px 5px 22px; font-size: 11.5px; color: var(--text-faint);
+    display: flex; align-items: center; gap: 6px; font-family: var(--mono);
+  }
+  .mock-task .s-icon { flex: 0 0 13px; display: inline-flex; }
+  .mock-task .agent-tag { color: var(--text-faint); }
+
+  .mock-main {
+    flex: 1; background: var(--panel-bg);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-faint); font-size: 12px;
+  }
+
+  .caption {
+    text-align: center; font-family: var(--mono); font-size: 12px;
+    color: var(--text-faint); margin-top: 16px;
+  }
+  .caption b { color: var(--text-dim); font-weight: 500; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="copy">
+      <div class="eyebrow">Why Sacred</div>
+      <h1>The future of AI-assisted work isn't one model or one harness. It's many, working together.</h1>
+      <div class="lede">
+        <p>Claude, Codex, Cursor, Gemini — each excels at different things. But today you're forced to pick one terminal, one workflow, one window at a time.</p>
+        <p><b>Sacred</b> is the layer between your projects and the models. <b>Sacred Sessions</b> wires them together — every agent gets its own hosted process, organized under the same project tree, side by side.</p>
+        <p>No more juggling windows or copy-pasting context. Just a calm place to work, with the right agent one hover away.</p>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="mock-window">
+        <div class="mock-titlebar">
+          <div class="lights">
+            <span class="light r"></span><span class="light y"></span><span class="light g"></span>
+          </div>
+          <span class="wtitle"><span class="swatch" id="wLogo"></span> Sacred</span>
+        </div>
+        <div class="mock-body">
+          <div class="mock-rail">
+            <div class="mock-folder dim"><span class="folder-icon" id="f1"></span> acme-storefront</div>
+            <div class="mock-folder hover" id="hoverFolder">
+              <span class="folder-icon" id="f2"></span> design-system
+              <div class="pill-bar" id="pillBar"></div>
+            </div>
+            <div class="mock-task" id="t1"></div>
+            <div class="mock-task" id="t2"></div>
+            <div class="mock-folder dim"><span class="folder-icon" id="f3"></span> marketing-site</div>
+          </div>
+          <div class="mock-main">terminal pane</div>
+        </div>
+      </div>
+      <div class="caption"><b>Hover any project, pick an agent.</b> Each one launches into the same project, side by side.</div>
+    </div>
+  </div>
+  <script src="icons.js"></script>
+  <script>
+    function mount(el, svg) {
+      while (el.firstChild) el.removeChild(el.firstChild);
+      el.insertAdjacentHTML('beforeend', svg);
+    }
+    mount(document.getElementById('wLogo'), SacredIcons.agentIcon('claude', 12));
+    mount(document.getElementById('f1'), SacredIcons.folderClosed(14));
+    mount(document.getElementById('f2'), SacredIcons.folderOpen(14));
+    mount(document.getElementById('f3'), SacredIcons.folderClosed(14));
+
+    var bar = document.getElementById('pillBar');
+    [
+      ['opencode', false], ['cursor', false], ['gemini', false],
+      ['codex', false], ['claude', true], ['plus', false]
+    ].forEach(function (pair) {
+      var span = document.createElement('span');
+      if (pair[1]) span.className = 'hl';
+      mount(span, pair[0] === 'plus'
+        ? SacredIcons.plus(11)
+        : SacredIcons.agentIcon(pair[0], 12));
+      bar.appendChild(span);
+    });
+
+    function taskRow(elId, agent, text) {
+      var row = document.getElementById(elId);
+      var icon = document.createElement('span');
+      icon.className = 's-icon';
+      mount(icon, SacredIcons.agentIcon(agent, 12));
+      var label = document.createElement('span');
+      label.textContent = text;
+      row.appendChild(icon);
+      row.appendChild(label);
+    }
+    taskRow('t1', 'claude', 'Add dark-mode tokens to Button');
+    taskRow('t2', 'codex', 'migrate test suite to vitest');
+  </script>
+</body>
+</html>

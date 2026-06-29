@@ -5,6 +5,7 @@ A terminal workspace in the spirit of [cmux](https://github.com/), built around 
 > Status: **prototype**. Interactive mocks:
 > - Main window — [`../mock-design/index.html`](../mock-design/index.html)
 > - Menu-bar monitor ("Always running") — [`../mock-design/menu-bar.html`](../mock-design/menu-bar.html)
+> - Logo review — [`../mock-design/logo-review.html`](../mock-design/logo-review.html)
 
 ---
 
@@ -20,14 +21,14 @@ It is *not* a tab-based terminal. There are no terminal tabs; one session is act
 - **Agent-first sessions** — every session knows which agent it runs and surfaces that agent's live state.
 - **Configurable side rail** — collapse/expand on demand (à la cmux), so the terminal can go full-width.
 - **Ghostty look** — import Ghostty's color theme so the terminal feels native to that ecosystem.
-- **Stay simple** — the prototype deliberately omits terminal tabs, splits, and settings UI.
+- **Stay simple** — the prototype deliberately omits terminal tabs, splits, and a full settings screen (a tabbed settings mock exists; most git fields are visual-only).
 
 ## 3. Non-goals (for the prototype)
 
 - No real PTY / process spawning (banners are faux output).
-- No terminal tabs, panes, or splits.
-- No multi-window, themes UI, or settings screen.
-- No auth / accounts.
+- No terminal tabs or arbitrary pane splits (only terminal + integrated browser).
+- No multi-window or auth / accounts.
+- Browser preview uses a mock HTML page, not a real webview/PTY socket API.
 
 ## 4. Core concepts
 
@@ -42,32 +43,32 @@ It is *not* a tab-based terminal. There are no terminal tabs; one session is act
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│ ● ● ●  [▢]  ✳ cmux                          ⌘B rail · ⌘N new │  titlebar
+│ ● ● ●  [▢]  [icon] Sacred          project › session  [🌐] main │  titlebar
 ├───────────────┬────────────────────────────────────────────┤
-│ PROJECTS   +  │  ✳ Claude Code  ~/project        ● Working   │  session header
-│ ▾ 📁 project  │ ──────────────────────────────────────────── │
-│   ✳ Claude    │                                              │
-│      working… │     terminal pane (Ghostty theme)            │
-│   >_ shell    │                                              │
-│ ▸ 📁 other    │                                              │
-│               │ ──────────────────────────────────────────── │
-│ + Add project │  ✳ message Claude Code…                      │  input
+│  [⚙][+]       │                                              │
+│ ▾ 📁 project  │     terminal pane (Ghostty theme)            │
+│  [agent pill on project hover]                             │
+│ + Add project │  [icon] message Claude Code…                 │  input
+│               │  ┌─ browser (optional split) ─────────────┐  │
+│               │  │ ← → ↻  localhost:5173              [×]   │  │
+│               │  │        [live preview iframe]           │  │
+│               │  └────────────────────────────────────────┘  │
 ├───────────────┴────────────────────────────────────────────┤
-│ ✳ cmux  project › session        ghostty: catppuccin-frappe │  statusbar
+│ Sacred  project › session        ghostty: catppuccin-frappe │  statusbar
 └────────────────────────────────────────────────────────────┘
 ```
 
-- **Side rail** (left): project tree. Toggle with `⌘B` or the titlebar button. Fully collapses; main pane reflows to full width.
-- **Main pane** (right): the active session — header (agent · path · status chip), terminal output, and an input row. No tabs.
-- **Statusbar** (bottom): app marker, breadcrumb, active Ghostty theme, project/session counts.
+- **Side rail** (left): Unpeel-style project tree — no section header; a `+` at the top opens import/create project. Gray folder icon + monospace project name; sessions are single-line rows (brand icon or spinner + task text) with global `⌘N` shortcuts. Hovering a project reveals a pill toolbar of brand agent icons.
+- **Main pane** (right): terminal output and input only — session context (project › task, browser toggle, branch) lives in the **titlebar** (§5). Optional **integrated browser** split on the right (§12). No statusbar/footer.
 
 ## 6. Interactions
 
 | Action | Trigger |
 |---|---|
 | Toggle side rail | `⌘B` / titlebar sidebar button |
-| Pre-open a session by agent | per-project `+` (on hover) or `⌘N` → agent picker |
-| Add a project | rail header `+` or "Add project" button → name + path modal |
+| Toggle integrated browser | `⌘⌥B` / globe button in session header |
+| Pre-open a session by agent | per-project hover pill (brand icons) or `⌘N` → agent picker |
+| Add a project | rail top `+` → import folder or create new |
 | Switch active session | click a session in the rail |
 | Close a session | hover a session → `×` |
 | Collapse/expand a project | click the project row |
@@ -76,19 +77,21 @@ It is *not* a tab-based terminal. There are no terminal tabs; one session is act
 
 ## 7. Agent pre-opening (the Orca pattern)
 
-Clicking `+` on a project (or `⌘N`) opens a picker: **"Pre-open a session with…"** listing the available agents with their glyph and provider. Selecting one immediately creates a session in that project, bound to that agent, set to `working` (or `idle` for Shell), and makes it active.
+Clicking an agent icon on a project's hover pill (or `⌘N`) opens a picker: **"Pre-open a session with…"** listing the available agents with their brand icon and provider. Selecting one immediately creates a session in that project, bound to that agent, set to `working` (or `idle` for Shell), and makes it active.
 
-Default agent roster:
+Default agent roster (vendored brand SVGs from [Lobe Icons](https://lobehub.com/icons) — no emoji or hand-drawn glyphs):
 
-| Agent | Provider | Glyph |
+| Agent | Provider | Icon |
 |---|---|---|
-| Claude Code | Anthropic · Opus 4.8 | ✳ |
-| Codex | OpenAI · gpt-5 | ⬡ |
-| Cursor Agent | Cursor CLI | ▸ |
-| Gemini | Google · 2.5 Pro | ✦ |
-| Copilot | GitHub | ◐ |
-| OpenCode | open source | ◇ |
-| Shell | zsh | >_ |
+| Claude Code | Anthropic · Opus 4.8 | Claude (orange mark) |
+| Codex | OpenAI · gpt-5 | OpenAI swirl |
+| Cursor Agent | Cursor CLI | Cursor cube |
+| Gemini | Google · 2.5 Pro | Gemini sparkle |
+| Copilot | GitHub | Copilot badge |
+| OpenCode | open source | Cline (stand-in) |
+| Shell | zsh | terminal prompt |
+
+Running sessions show an animated spinner in the rail instead of the static brand mark (`working` / `waiting`).
 
 ## 8. Status model
 
@@ -109,6 +112,16 @@ Two independent token layers in a single `:root` block:
 2. **Terminal** — Ghostty's default theme, **Catppuccin Frappé** (`bg #303446`, `fg #c6d0f5`, full 16-color ANSI palette).
 
 Swapping any Ghostty palette into layer 2 re-skins every terminal pane at once.
+
+### App Icon Direction
+
+The app icon should use the **branching sacred timeline** direction: a luminous white/cyan energy trunk with blue glow and subtle magenta branch tips, filling a rounded-square macOS icon. Do not use an inner circular portal; the branches are the mark. Current preferred candidate: `sacred-terminal-app-icon-v6-thick-dark-border.png`, with a thick dark indigo/violet rounded-square rim and a deep navy background so the icon shape separates from black UI surfaces.
+
+Reference materials:
+
+- Visual reference — `../mock-design/assets/reference-sacred-tree.png`
+- Logo review — [`../mock-design/logo-review.html`](../mock-design/logo-review.html)
+- Generated candidate — [`../mock-design/assets/sacred-terminal-app-icon-v6-thick-dark-border.png`](../mock-design/assets/sacred-terminal-app-icon-v6-thick-dark-border.png)
 
 ## 10. Persistence
 
@@ -132,7 +145,7 @@ The window is disposable; the work is not. Closing the window must never stop an
   | left indicator | per-session state — a spinner while `working`, an app glyph when idle |
   | title | the latest message / task, truncated |
   | subtitle | the project (e.g. `acme-storefront`) |
-  | right identity | the agent's glyph, or a blue dot when the session needs you / has unread output |
+  | right identity | the agent's brand icon, or a blue dot when the session needs you / has unread output |
 
 - **Snap-back.** Picking a row reopens the window focused **directly on that conversation** — no hunting through the rail.
 - **Shared status source.** The pulse, the rail dots, and the roster all read the same `statusMeta(status)` model (§8), so a session's state looks consistent everywhere it appears.
@@ -141,12 +154,13 @@ This is the "window closed" counterpart to the main window (§5): same sessions,
 
 ## 12. Integrated browser
 
-A real browser pane lives **inside** the workspace, so you can preview what an agent is building — and let the agent drive the page — without leaving the terminal. This mirrors [cmux's browser](https://manaflow-ai-cmux.mintlify.app/features/browser), which fits our Ghostty/libghostty lineage.
+A browser pane lives **inside** the workspace, so you can preview what an agent is building — and let the agent drive the page — without leaving the terminal. This mirrors [cmux's browser](https://manaflow-ai-cmux.mintlify.app/features/browser).
 
-> Spec feature — not in the current mock (the prototype deliberately stays single-pane, §3).
+**In the mock:** [`../mock-design/index.html`](../mock-design/index.html) splits the main pane when a session's browser is open. Preview content comes from [`../mock-design/browser-preview.html`](../mock-design/browser-preview.html) (marketing hero or Storybook, keyed by project). Clicking an element in the preview posts a **send-to-agent** toast with an element ref.
 
-- **Split pane.** Open a browser beside the active session's terminal (toggle, e.g. `⌘⌥B`). It splits the main pane (§5) rather than replacing it. Per-session: each agent gets a browser pointed at its own dev server (e.g. `localhost:3001`).
-- **One programmable surface.** Both you and the agent drive the same browser over a single socket API: navigate, snapshot the DOM / accessibility tree, click, type, fill forms, evaluate JS, and read console + network activity.
+- **Split pane.** Open a browser beside the active session's terminal (`⌘⌥B` or the globe button in the session header). Per-session: each session stores its own `browserUrl` and `browserOpen` state (persisted in `localStorage`).
+- **Chrome.** Back / forward / reload (mock), editable URL bar, close button.
+- **One programmable surface (production).** Both you and the agent drive the same browser over a socket API: navigate, snapshot the DOM / accessibility tree, click, type, fill forms, evaluate JS, and read console + network activity.
 - **Element refs, not coordinates.** A snapshot returns a JSON accessibility tree with stable element refs; the agent acts on a ref instead of guessing pixels:
 
   ```

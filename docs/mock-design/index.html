@@ -3,10 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>cmux-style terminal · prototype</title>
+<title>Sacred Terminal · prototype</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="icons.css?v=5" />
 <style>
   /* ============================================================
      THEME TOKENS
@@ -31,6 +32,10 @@
     --hover:          #16161a;
     --active:         #1d6ef5;   /* cmux blue selection */
     --active-soft:    #14223f;
+
+    --session-active-bg:     rgba(250, 179, 135, 0.06);
+    --session-active-border: rgba(250, 179, 135, 0.45);
+    --session-active-glow:   rgba(250, 179, 135, 0.12);
 
     /* --- Ghostty default theme: Catppuccin Frappe --- */
     --g-bg:   #303446;
@@ -93,6 +98,7 @@
     gap: 10px;
     padding: 0 12px;
     user-select: none;
+    position: relative;
   }
   .traffic { display: flex; gap: 8px; align-items: center; }
   .light { width: 12px; height: 12px; border-radius: 50%; }
@@ -112,16 +118,40 @@
   .icon-btn:hover { background: var(--hover); color: var(--text); }
   .icon-btn.on { color: var(--text); }
 
-  .titlebar .title {
-    font-size: 12.5px;
-    font-weight: 600;
-    color: var(--text);
-    display: flex; align-items: center; gap: 7px;
-    margin-left: 2px;
+  .title-session {
+    display: none; flex: 1; align-items: center; min-width: 0; height: 100%;
+    font-family: var(--mono); font-size: 11.5px; color: var(--text-dim);
   }
-  .titlebar .title .swatch { color: #fab387; }
-  .titlebar .spacer { flex: 1; }
-  .titlebar .kbd-hint { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); }
+  .title-session.visible { display: flex; }
+  .title-crumb {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    display: flex; align-items: center; gap: 8px; min-width: 0;
+    max-width: min(520px, 58vw);
+  }
+  .title-actions {
+    margin-left: auto; display: flex; align-items: center; gap: 8px;
+  }
+  .title-crumb .proj-name { font-weight: 600; color: var(--text); flex: 0 0 auto; }
+  .title-crumb .sep { color: var(--text-faint); flex: 0 0 auto; }
+  .title-crumb .sess-title {
+    color: var(--text-dim); flex: 1 1 auto; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .title-actions .term-browser-btn {
+    flex: 0 0 auto; width: 26px; height: 26px; border-radius: 6px;
+    border: 1px solid transparent; background: transparent; color: var(--text-dim);
+    cursor: pointer; display: grid; place-items: center; padding: 0;
+  }
+  .title-actions .term-browser-btn:hover { background: var(--hover); color: var(--text); }
+  .title-actions .term-browser-btn.on {
+    color: #9ec5ff; border-color: rgba(29, 110, 245, 0.35);
+    background: rgba(29, 110, 245, 0.15);
+  }
+  .title-actions .branch {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--text-faint);
+  }
+  .title-actions .branch svg { opacity: .7; }
 
   /* ============================================================
      BODY: rail + main
@@ -142,117 +172,152 @@
   }
   .window.rail-collapsed .rail { width: 0; flex-basis: 0; border-right-color: transparent; }
 
-  .rail-head {
-    height: 40px; flex: 0 0 40px;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 8px 0 14px;
-    border-bottom: 1px solid var(--border-soft);
-  }
-  .rail-head .label {
-    font-size: 11px; font-weight: 700; letter-spacing: .08em;
-    color: var(--text-faint); text-transform: uppercase;
+  .rail-top {
+    flex: 0 0 34px;
+    display: flex; align-items: center; justify-content: flex-end;
+    padding: 0 6px; gap: 2px;
   }
 
-  .tree { flex: 1; overflow-y: auto; padding: 6px 6px 14px; }
+  .tree { flex: 1; overflow-y: auto; padding: 8px 6px 10px; }
   .tree::-webkit-scrollbar { width: 8px; }
   .tree::-webkit-scrollbar-thumb { background: #222228; border-radius: 8px; }
 
-  /* project (folder) */
+  /* project (folder) — Unpeel tree */
   .project { margin-bottom: 2px; }
   .project-row {
-    display: flex; align-items: center; gap: 6px;
+    display: flex; align-items: center; gap: 7px;
     padding: 6px 8px; border-radius: 7px;
     cursor: pointer; position: relative;
     color: var(--text-dim);
   }
   .project-row:hover { background: var(--hover); }
-  .project-row .chev { width: 12px; transition: transform .15s; color: var(--text-faint); font-size: 10px; }
-  .project.collapsed .chev { transform: rotate(-90deg); }
-  .project-row .folder { color: var(--text-dim); display: inline-flex; }
-  .project-row .pname { font-weight: 600; color: var(--text); font-size: 12.5px; }
-  .project-row .ppath { color: var(--text-faint); font-size: 10.5px; font-family: var(--mono); margin-left: auto; }
-  .project-row .add-sess {
-    opacity: 0; margin-left: 6px; width: 18px; height: 18px;
-    display: grid; place-items: center; border-radius: 5px;
-    color: var(--text-dim);
+  .project-row .chev { display: none; }
+  .project-row .folder { color: var(--text-dim); display: inline-flex; flex: 0 0 14px; }
+  .project-row .pname {
+    font-weight: 600; color: var(--text); font-size: 12.5px;
+    font-family: var(--mono); letter-spacing: -.01em;
   }
-  .project-row:hover .add-sess { opacity: 1; }
-  .project-row .add-sess:hover { background: #26262c; color: var(--text); }
+  .project-row .ppath {
+    color: var(--text-faint); font-size: 10px; font-family: var(--mono);
+    margin-left: auto; opacity: 0;
+  }
   .project-row:hover .ppath { display: none; }
 
-  .sessions { padding-left: 8px; margin: 2px 0 6px; }
+  /* hover agent toolbar (Unpeel pill) */
+  .agent-bar {
+    position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    display: none; align-items: center; gap: 1px;
+    padding: 3px 5px; border-radius: 999px;
+    background: rgba(22,22,28,.96);
+    border: 1px solid rgba(255,255,255,.1);
+    box-shadow: 0 6px 22px rgba(0,0,0,.45);
+  }
+  .project-row:hover .agent-bar { display: flex; }
+  .agent-bar button {
+    width: 24px; height: 24px; border: none;
+    border-radius: 50%; display: grid; place-items: center;
+    color: var(--text-dim); cursor: pointer; padding: 0;
+    transition: background .12s, color .12s;
+  }
+  .agent-bar button:hover { color: var(--text); }
+  .agent-bar button svg { display: block; }
+
+  .sessions { padding-left: 14px; margin: 1px 0 5px; }
   .project.collapsed .sessions { display: none; }
 
-  /* session cell (cmux two-line) */
+  /* session row — single line, agent icon + task */
   .session {
-    display: flex; gap: 9px; align-items: flex-start;
-    padding: 7px 9px; border-radius: 7px; cursor: pointer;
+    display: flex; gap: 6px; align-items: center;
+    padding: 5px 8px 5px 4px; border-radius: 7px; cursor: pointer;
     position: relative; margin-bottom: 1px;
     border: 1px solid transparent;
+    font-family: var(--mono); font-size: 11.5px;
   }
   .session:hover { background: var(--hover); }
-  .session.active { background: var(--active); }
-  .session.active .s-name,
-  .session.active .s-detail { color: #fff; }
-  .session.active .s-detail { opacity: .85; }
+  .session.active {
+    background: var(--session-active-bg);
+    border-color: var(--session-active-border);
+    box-shadow: inset 0 0 0 1px var(--session-active-glow);
+  }
+  .session.active .s-label { color: var(--text); }
 
-  .s-glyph {
-    font-family: var(--mono); font-size: 13px; line-height: 18px;
-    width: 16px; text-align: center; flex: 0 0 16px;
+  .s-handle {
+    flex: 0 0 12px; display: inline-flex; align-items: center;
+    color: var(--text-faint); opacity: .55;
   }
-  .s-main { flex: 1; min-width: 0; }
-  .s-name {
-    font-size: 12.5px; font-weight: 600; color: var(--text);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .s-detail {
-    font-size: 10.5px; color: var(--text-faint); margin-top: 1px;
+  .s-icon { flex: 0 0 14px; display: inline-flex; align-items: center; justify-content: center; }
+  .s-label {
+    flex: 1; min-width: 0; color: var(--text-dim);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .s-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; margin-top: 6px; }
-  .s-dot.pulse { animation: pulse 1.4s ease-in-out infinite; }
-  @keyframes pulse { 0%,100%{ opacity:1; transform:scale(1);} 50%{ opacity:.45; transform:scale(.7);} }
+  .session.active .s-label { color: var(--text); }
+
+  .s-meta { flex: 0 0 auto; margin-left: 4px; }
+  .s-kbd { font-size: 10px; color: var(--text-faint); opacity: .55; font-family: var(--mono); }
 
   .session .s-close {
-    position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
-    width: 18px; height: 18px; border-radius: 5px; display: none;
-    place-items: center; color: rgba(255,255,255,.6); font-size: 14px;
+    width: 16px; height: 16px; border-radius: 4px; display: none;
+    place-items: center; color: var(--text-faint); font-size: 13px;
+    flex: 0 0 16px;
   }
   .session:hover .s-close { display: grid; }
-  .session .s-close:hover { background: rgba(255,255,255,.15); color: #fff; }
-  .session:hover .s-dot { opacity: 0; }
+  .session:hover .s-kbd { opacity: 0; }
+  .session .s-close:hover { background: rgba(255,255,255,.1); color: var(--text); }
 
-  .add-project-btn {
-    margin: 4px 6px 0; padding: 7px 10px; border-radius: 7px;
-    display: flex; align-items: center; gap: 8px;
-    color: var(--text-faint); cursor: pointer; font-size: 12px;
-    border: 1px dashed #232329;
-  }
-  .add-project-btn:hover { color: var(--text); border-color: #34343c; background: var(--hover); }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ============================================================
      MAIN / TERMINAL
      ============================================================ */
-  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--panel-bg); }
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--g-bg); }
 
-  .sess-head {
-    height: 40px; flex: 0 0 40px;
-    border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 10px;
-    padding: 0 14px; background: var(--panel-bg);
+  .term-pane {
+    flex: 1; display: flex; flex-direction: column; min-height: 0;
+    background: var(--g-bg);
   }
-  .sess-head .sh-glyph { font-family: var(--mono); font-size: 14px; }
-  .sess-head .sh-title { font-weight: 600; font-size: 13px; }
-  .sess-head .sh-path { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
-  .sess-head .spacer { flex: 1; }
-  .chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    font-size: 11px; font-weight: 600;
-    padding: 3px 9px; border-radius: 999px;
-    background: #161619; border: 1px solid var(--border);
+
+  /* workspace split: terminal + integrated browser */
+  .workspace {
+    flex: 1; display: flex; min-height: 0; min-width: 0;
   }
-  .chip .s-dot { margin: 0; }
+  .workspace .term-pane { flex: 1; min-width: 0; }
+  .workspace.browser-open .term-pane { flex: 0 0 48%; max-width: 58%; }
+  .browser-pane {
+    flex: 1; min-width: 0; display: none; flex-direction: column;
+    background: #0e0e11; border-left: 1px solid rgba(255,255,255,.08);
+  }
+  .workspace.browser-open .browser-pane { display: flex; }
+  .browser-toolbar {
+    flex: 0 0 36px; display: flex; align-items: center; gap: 6px;
+    padding: 0 8px; background: #131316; border-bottom: 1px solid #222228;
+  }
+  .browser-toolbar button {
+    width: 26px; height: 26px; border: none; border-radius: 6px;
+    background: transparent; color: var(--text-dim); cursor: pointer;
+    display: grid; place-items: center; padding: 0;
+  }
+  .browser-toolbar button:hover { background: var(--hover); color: var(--text); }
+  .browser-url {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
+    background: #0d0d10; border: 1px solid #2a2a30; border-radius: 7px;
+    padding: 0 10px; height: 28px;
+  }
+  .browser-url svg { flex: 0 0 auto; color: var(--text-faint); }
+  .browser-url input {
+    flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+    color: var(--text); font-family: var(--mono); font-size: 11px;
+  }
+  .browser-frame-wrap { flex: 1; min-height: 0; background: #fff; position: relative; }
+  .browser-frame {
+    width: 100%; height: 100%; border: none; display: block; background: #fff;
+  }
+  .browser-toast {
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+    padding: 7px 12px; border-radius: 8px; font-size: 11px; font-family: var(--mono);
+    background: rgba(12,12,14,.92); color: #c6d0f5; border: 1px solid rgba(255,255,255,.1);
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .browser-toast.show { opacity: 1; }
 
   /* terminal pane = Ghostty theme */
   .term {
@@ -304,7 +369,7 @@
     color: #fff; font-weight: 600; cursor: pointer; font-size: 12.5px;
   }
   .empty .pill:hover { filter: brightness(1.08); }
-  .empty .ghost-art { font-family: var(--mono); color: #2a2a30; font-size: 12px; white-space: pre; line-height: 1.2; }
+  .empty .ghost-art { opacity: .35; margin-bottom: 4px; }
 
   /* ============================================================
      AGENT PICKER (Orca-style "pre-open by agent")
@@ -313,7 +378,7 @@
   .scrim.open { display: block; }
 
   .picker {
-    position: fixed; z-index: 50; width: 286px;
+    position: fixed; z-index: 50; width: 360px;
     background: #141417; border: 1px solid #2a2a30; border-radius: 11px;
     box-shadow: 0 24px 60px rgba(0,0,0,.55);
     padding: 6px; display: none;
@@ -324,18 +389,56 @@
     color: var(--text-faint); padding: 8px 10px 6px;
   }
   .agent {
-    display: flex; align-items: center; gap: 11px;
-    padding: 9px 10px; border-radius: 8px; cursor: pointer;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
   }
   .agent:hover { background: var(--hover); }
-  .agent .ag-glyph {
-    width: 30px; height: 30px; flex: 0 0 30px; border-radius: 8px;
-    display: grid; place-items: center; font-family: var(--mono);
-    font-size: 15px; font-weight: 700;
-    background: #1d1d22;
+  .agent .ag-icon {
+    width: 32px; height: 32px; flex: 0 0 32px; border-radius: 8px;
+    display: grid; place-items: center;
   }
+  .agent .ag-body { flex: 1; min-width: 0; }
   .agent .ag-name { font-weight: 600; font-size: 13px; }
   .agent .ag-sub { font-size: 10.5px; color: var(--text-faint); margin-top: 1px; }
+  .picker-worktree {
+    display: flex; align-items: center; gap: 10px;
+    margin: 0 6px 6px; padding: 8px 11px; border-radius: 8px;
+    font-size: 12px; color: #c8c8d2; cursor: pointer; user-select: none;
+    border: 1px solid #2a2a30; background: rgba(255, 255, 255, 0.03);
+    transition: background .12s, border-color .12s, color .12s;
+  }
+  .picker-worktree:hover { background: var(--hover); border-color: #32323a; }
+  .picker-worktree:has(input:checked) {
+    background: rgba(29, 110, 245, 0.07);
+    border-color: rgba(29, 110, 245, 0.28);
+    color: #dce4f5;
+  }
+  .picker-worktree input {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  .picker-worktree::before {
+    content: '';
+    flex: 0 0 17px; width: 17px; height: 17px; border-radius: 5px;
+    border: 1.5px solid #3d3d46;
+    background: linear-gradient(180deg, #141418 0%, #0d0d10 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: border-color .15s, background .15s, box-shadow .15s;
+  }
+  .picker-worktree:has(input:checked)::before {
+    border-color: #4d94f7;
+    background-color: #1d6ef5;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.4 2.4 4.6-5' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 11px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 0 0 3px rgba(29, 110, 245, 0.12);
+  }
+  .picker-worktree:has(input:focus-visible)::before {
+    outline: 2px solid rgba(29, 110, 245, 0.45);
+    outline-offset: 2px;
+  }
+  .picker-worktree-label { line-height: 1.2; }
 
   /* add-project modal */
   .modal {
@@ -362,15 +465,299 @@
   .modal button.primary { background: var(--active); color: #fff; border-color: var(--active); font-weight: 600; }
   .modal button:hover { filter: brightness(1.1); }
 
-  /* statusbar */
-  .statusbar {
-    height: 26px; flex: 0 0 26px; border-top: 1px solid var(--border);
-    background: var(--titlebar-bg); display: flex; align-items: center;
-    padding: 0 12px; gap: 14px; font-family: var(--mono);
-    font-size: 10.5px; color: var(--text-faint);
+  /* project + menu (import / create) */
+  .project-menu {
+    position: fixed; z-index: 50; width: 196px; display: none;
+    background: #141417; border: 1px solid #2a2a30; border-radius: 10px;
+    box-shadow: 0 18px 48px rgba(0,0,0,.5); padding: 5px;
   }
-  .statusbar .sb-accent { color: #fab387; }
-  .statusbar .spacer { flex: 1; }
+  .project-menu.open { display: block; }
+  .project-menu button {
+    width: 100%; text-align: left; border: none; background: transparent;
+    color: var(--text); font-size: 12.5px; padding: 8px 10px; border-radius: 7px;
+    cursor: pointer; font-family: var(--ui);
+  }
+  .project-menu button:hover { background: var(--hover); }
+  .project-menu button span { display: block; font-size: 10.5px; color: var(--text-faint); margin-top: 2px; }
+
+  /* settings panel */
+  .settings-panel {
+    position: fixed; z-index: 50; left: 50%; top: 50%;
+    translate: -50% -50%;
+    width: min(680px, 94vw); max-height: min(720px, 88vh);
+    background: #141417; border: 1px solid #2a2a30; border-radius: 12px;
+    box-shadow: 0 24px 60px rgba(0,0,0,.55);
+    display: none; flex-direction: column; overflow: hidden;
+  }
+  .settings-panel.open { display: flex; }
+  .settings-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 16px 18px 0;
+  }
+  .settings-head h2 { font-size: 15px; font-weight: 700; }
+  .settings-tabs {
+    display: flex; gap: 4px; padding: 12px 18px 0;
+    border-bottom: 1px solid #222228;
+  }
+  .settings-tab {
+    border: none; background: transparent; color: var(--text-dim);
+    font-size: 12.5px; font-family: var(--ui); padding: 8px 12px;
+    border-radius: 7px 7px 0 0; cursor: pointer; margin-bottom: -1px;
+    border: 1px solid transparent; border-bottom: none;
+  }
+  .settings-tab:hover { color: var(--text); background: rgba(255,255,255,.03); }
+  .settings-tab.on {
+    color: var(--text); font-weight: 600;
+    background: #141417; border-color: #222228;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  .settings-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .settings-pane { display: none; flex: 1; min-height: 0; flex-direction: column; }
+  .settings-pane.on { display: flex; }
+  .settings-pane-intro {
+    padding: 14px 18px 0; font-size: 12px; color: var(--text-dim); line-height: 1.45;
+  }
+  .settings-meta {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 18px; font-size: 12px; color: var(--text-dim);
+  }
+  .settings-meta .badge {
+    display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+    background: rgba(255,255,255,.06); color: var(--text-faint); font-size: 10.5px;
+  }
+  .settings-scroll {
+    flex: 1; min-height: 0; overflow-y: auto; padding: 8px 18px 16px;
+  }
+  .settings-scroll::-webkit-scrollbar { width: 8px; }
+  .settings-scroll::-webkit-scrollbar-thumb { background: #222228; border-radius: 8px; }
+  .settings-list { padding: 0 8px 4px; }
+  .setting-agent {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 8px; border-radius: 9px;
+  }
+  .setting-agent + .setting-agent { margin-top: 2px; }
+  .setting-agent:hover { background: var(--hover); }
+  .setting-agent-icon {
+    width: 34px; height: 34px; flex: 0 0 34px; border-radius: 8px;
+    display: grid; place-items: center; background: #ececf1;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  }
+  .setting-agent-body { flex: 1; min-width: 0; }
+  .setting-agent-title {
+    display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+    font-weight: 600; font-size: 13px;
+  }
+  .setting-agent-title .pill {
+    font-size: 10px; font-weight: 500; color: var(--text-faint);
+    padding: 1px 7px; border-radius: 999px; background: rgba(255,255,255,.06);
+  }
+  .setting-agent-cmd {
+    margin-top: 3px; font-family: var(--mono); font-size: 10.5px;
+    color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .setting-agent.is-off .setting-agent-title,
+  .setting-agent.is-off .setting-agent-cmd { opacity: .55; }
+  .setting-agent-ctrls {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+  }
+  .pin-btn {
+    width: 28px; height: 28px; border: 1px solid #2a2a30; border-radius: 7px;
+    background: #0d0d10; color: var(--text-faint); cursor: pointer;
+    display: grid; place-items: center; padding: 0; flex: 0 0 28px;
+  }
+  .pin-btn:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+  .pin-btn.on {
+    color: #e5c890; border-color: rgba(229, 200, 144, 0.35);
+    background: rgba(229, 200, 144, 0.1);
+  }
+  .pin-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .seg-toggle {
+    flex: 0 0 auto; display: inline-flex;
+    border: 1px solid #2a2a30; border-radius: 8px; overflow: hidden;
+    background: #0d0d10;
+  }
+  .seg-toggle button {
+    border: none; background: transparent; color: var(--text-dim);
+    font-size: 11px; padding: 5px 10px; cursor: pointer; font-family: var(--ui);
+  }
+  .seg-toggle button:hover { color: var(--text); }
+  .seg-toggle button.on {
+    background: rgba(29, 110, 245, 0.22); color: #9ec5ff; font-weight: 600;
+  }
+  .seg-toggle button.on-off {
+    background: rgba(255,255,255,.06); color: var(--text); font-weight: 600;
+  }
+
+  /* git + source control tab */
+  .set-section { margin-bottom: 18px; }
+  .set-section > h3 {
+    font-size: 13px; font-weight: 700; margin-bottom: 4px;
+  }
+  .set-section > .set-desc {
+    font-size: 11.5px; color: var(--text-dim); line-height: 1.45; margin-bottom: 10px;
+  }
+  .set-row {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+    padding: 10px 0; border-top: 1px solid #1c1c22;
+  }
+  .set-row:first-child { border-top: none; padding-top: 0; }
+  .set-row-body { flex: 1; min-width: 0; }
+  .set-row-title { font-size: 12.5px; font-weight: 600; margin-bottom: 2px; }
+  .set-row-desc { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+  .set-row-ctrl { flex: 0 0 auto; padding-top: 2px; }
+  .set-seg {
+    display: inline-flex; border: 1px solid #2a2a30; border-radius: 8px;
+    overflow: hidden; background: #0d0d10;
+  }
+  .set-seg button {
+    border: none; background: transparent; color: var(--text-dim);
+    font-size: 10.5px; padding: 5px 9px; cursor: pointer; font-family: var(--ui);
+    white-space: nowrap;
+  }
+  .set-seg button:hover { color: var(--text); }
+  .set-seg button.on {
+    background: rgba(29, 110, 245, 0.22); color: #9ec5ff; font-weight: 600;
+  }
+  .set-input {
+    width: 100%; margin-top: 8px; background: #0d0d10; border: 1px solid #2a2a30;
+    border-radius: 7px; padding: 7px 10px; color: var(--text);
+    font-family: var(--mono); font-size: 11px; outline: none;
+  }
+  .set-input:focus { border-color: var(--active); }
+  .set-switch {
+    width: 36px; height: 20px; border-radius: 999px; border: 1px solid #2a2a30;
+    background: #0d0d10; position: relative; cursor: pointer; flex: 0 0 36px;
+  }
+  .set-switch::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 14px; height: 14px; border-radius: 50%; background: #5b5b63;
+    transition: transform .15s, background .15s;
+  }
+  .set-switch.on { background: rgba(29, 110, 245, 0.35); border-color: rgba(29, 110, 245, 0.5); }
+  .set-switch.on::after { transform: translateX(16px); background: #9ec5ff; }
+  .set-check-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 8px 0; border-top: 1px solid #1c1c22;
+  }
+  .set-check-row:first-child { border-top: none; }
+  .set-check-row input { margin-top: 2px; accent-color: var(--active); }
+  .set-check-row label { flex: 1; cursor: pointer; }
+  .set-check-row .set-row-title { margin-bottom: 2px; }
+  .recipe-card {
+    border: 1px solid #2a2a30; border-radius: 10px; padding: 12px;
+    margin-bottom: 10px; background: rgba(255,255,255,.02);
+  }
+  .recipe-card-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+    margin-bottom: 10px;
+  }
+  .recipe-card-head h4 { font-size: 12.5px; font-weight: 700; }
+  .recipe-card-head p { font-size: 11px; color: var(--text-dim); margin-top: 2px; line-height: 1.35; }
+  .recipe-select {
+    background: #0d0d10; border: 1px solid #2a2a30; border-radius: 7px;
+    color: var(--text-dim); font-size: 11px; padding: 5px 8px; font-family: var(--ui);
+  }
+  .recipe-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  }
+  .recipe-grid label {
+    display: block; font-size: 10.5px; color: var(--text-dim); margin-bottom: 4px;
+  }
+  .recipe-grid textarea {
+    width: 100%; min-height: 54px; resize: vertical;
+    background: #0d0d10; border: 1px solid #2a2a30; border-radius: 7px;
+    padding: 7px 9px; color: var(--text); font-family: var(--mono); font-size: 10.5px;
+    outline: none;
+  }
+  .recipe-vars {
+    margin-top: 8px; font-size: 10px; color: var(--text-faint); font-family: var(--mono);
+  }
+  .budget-card {
+    border: 1px solid #2a2a30; border-radius: 10px; padding: 12px;
+    margin-bottom: 10px; background: rgba(255,255,255,.02);
+  }
+  .budget-card h4 { font-size: 12.5px; font-weight: 700; margin-bottom: 4px; }
+  .budget-card p { font-size: 11px; color: var(--text-dim); line-height: 1.4; margin-bottom: 8px; }
+  .budget-stat { font-size: 11px; color: var(--text); font-family: var(--mono); margin-bottom: 4px; }
+  .budget-stat span { color: var(--text-dim); }
+
+  /* appearance settings */
+  .ghostty-import {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px; border: 1px solid #2a2a30; border-radius: 10px;
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .ghostty-import-swatch {
+    width: 52px; height: 52px; flex: 0 0 52px; border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .ghostty-import-body { flex: 1; min-width: 0; }
+  .ghostty-import-label {
+    font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text-faint); margin-bottom: 4px;
+  }
+  .ghostty-import-theme { font-size: 13px; font-weight: 600; font-family: var(--mono); }
+  .ghostty-import-meta {
+    font-size: 10.5px; color: var(--text-faint); font-family: var(--mono); margin-top: 3px;
+  }
+  .ghostty-import-note {
+    margin-top: 8px; font-size: 11px; color: var(--text-dim); line-height: 1.45;
+  }
+  .ghostty-import-actions {
+    flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px;
+  }
+  .ghostty-action {
+    padding: 6px 10px; border-radius: 7px;
+    border: 1px solid #2a2a30; background: #0d0d10; color: var(--text-dim);
+    font-size: 11px; cursor: pointer; font-family: var(--ui); white-space: nowrap;
+  }
+  .ghostty-action:hover { color: var(--text); background: var(--hover); }
+  .ghostty-path-link {
+    background: none; border: none; padding: 0; margin: 0;
+    font: inherit; font-family: var(--mono); color: var(--text-dim);
+    cursor: pointer; text-align: left; text-decoration: underline; text-underline-offset: 2px;
+  }
+  .ghostty-path-link:hover { color: var(--text); }
+  .proto-toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 9999;
+    padding: 7px 12px; border-radius: 8px; font-size: 11px; font-family: var(--mono);
+    background: rgba(12,12,14,.92); color: #c6d0f5; border: 1px solid rgba(255,255,255,.1);
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .proto-toast.show { opacity: 1; }
+  .color-ctrl input[type="color"] {
+    width: 40px; height: 30px; padding: 2px; border: 1px solid #2a2a30;
+    border-radius: 8px; background: #0d0d10; cursor: pointer;
+  }
+  .color-ctrl input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  .color-ctrl input[type="color"]::-webkit-color-swatch {
+    border: none; border-radius: 5px;
+  }
+  .color-hex {
+    width: 78px; margin-left: 8px; padding: 5px 8px; font-size: 11px;
+    text-transform: lowercase;
+  }
+  .color-ctrl-row { display: flex; align-items: center; }
+  .rail-preview {
+    margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    display: flex; height: 88px;
+  }
+  .rail-preview-rail {
+    width: 38%; background: var(--rail-bg); border-right: 1px solid var(--border);
+    padding: 8px 6px; display: flex; flex-direction: column; gap: 5px;
+  }
+  .rail-preview-row {
+    height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.06);
+  }
+  .rail-preview-row.active {
+    background: var(--session-active-bg);
+    box-shadow: inset 0 0 0 1px var(--session-active-border);
+  }
+  .rail-preview-main { flex: 1; background: var(--g-bg); }
+  .set-desc code {
+    font-family: var(--mono); font-size: 10.5px;
+    padding: 1px 5px; border-radius: 4px; background: rgba(255, 255, 255, 0.06);
+  }
 </style>
 </head>
 <body>
@@ -385,56 +772,54 @@
           <rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/>
         </svg>
       </button>
-      <div class="title"><span class="swatch">&#10037;</span> cmux</div>
-      <div class="spacer"></div>
-      <span class="kbd-hint">Cmd+B rail &middot; Cmd+N session</span>
+      <div class="title-session" id="titleSession"></div>
     </div>
 
     <!-- BODY -->
     <div class="body">
       <!-- SIDE RAIL -->
       <aside class="rail">
-        <div class="rail-head">
-          <span class="label">Projects</span>
-          <button class="icon-btn" id="addProject" title="Add project">
+        <div class="rail-top">
+          <button class="icon-btn" id="openSettings" title="Settings">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
+          <button class="icon-btn" id="addProject" title="Import or create project">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
           </button>
         </div>
         <div class="tree" id="tree"></div>
-        <div class="add-project-btn" id="addProject2">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          Add project
-        </div>
       </aside>
 
       <!-- MAIN -->
       <main class="main" id="main"></main>
     </div>
+  </div>
 
-    <!-- STATUSBAR -->
-    <div class="statusbar">
-      <span class="sb-accent">&#10037; cmux</span>
-      <span id="sbInfo">ready</span>
-      <span class="spacer"></span>
-      <span>ghostty: catppuccin-frappe</span>
-      <span id="sbCount"></span>
-    </div>
+  <!-- project menu -->
+  <div class="project-menu" id="projectMenu">
+    <button type="button" data-mode="import">Import folder&hellip;<span>Choose an existing directory</span></button>
+    <button type="button" data-mode="create">Create new project&hellip;<span>Name and path for a new folder</span></button>
   </div>
 
   <!-- agent picker -->
   <div class="scrim" id="scrim"></div>
   <div class="picker" id="picker">
     <div class="ph">Pre-open a session with&hellip;</div>
+    <label class="picker-worktree">
+      <input type="checkbox" id="pickerWorktree" />
+      <span class="picker-worktree-label">Open with worktree</span>
+    </label>
     <div id="agentList"></div>
   </div>
 
   <!-- add project modal -->
   <div class="modal" id="modal">
-    <h3>Add project</h3>
+    <h3 id="modalTitle">Create project</h3>
     <label>Name</label>
     <input id="mName" placeholder="my-project" autocomplete="off" />
     <label>Path</label>
@@ -445,19 +830,454 @@
     </div>
   </div>
 
+  <!-- settings -->
+  <div class="settings-panel" id="settingsPanel">
+    <div class="settings-head">
+      <h2>Settings</h2>
+      <button type="button" class="icon-btn" id="closeSettings" title="Close">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="settings-tabs">
+      <button type="button" class="settings-tab on" data-tab="agents">Agents</button>
+      <button type="button" class="settings-tab" data-tab="git">Git + Source Control</button>
+      <button type="button" class="settings-tab" data-tab="appearance">Appearance</button>
+    </div>
+    <div class="settings-body">
+      <div class="settings-pane on" id="settingsPaneAgents">
+        <p class="settings-pane-intro">Enable agents for pre-open sessions. Pin up to 6 for the project hover quick-select menu.</p>
+        <div class="settings-meta">
+          <span>Pinned <span class="badge" id="settingsPinnedCount">0/6</span></span>
+          <span>Installed <span class="badge" id="settingsDetectedCount"></span></span>
+        </div>
+        <div class="settings-scroll">
+          <div class="settings-list" id="settingsAgentList"></div>
+        </div>
+      </div>
+      <div class="settings-pane" id="settingsPaneGit">
+        <p class="settings-pane-intro">Branch naming, base refs, attribution, and Git AI author.</p>
+        <div class="settings-scroll" id="settingsGitScroll">
+          <div class="set-section">
+            <h3>Branch prefix</h3>
+            <p class="set-desc">Choose whether branch names use your Git username, a custom prefix, or no prefix.</p>
+            <div class="set-seg" data-git="branchPrefix">
+              <button type="button" data-val="git">Git username</button>
+              <button type="button" data-val="custom">Custom</button>
+              <button type="button" data-val="none">None</button>
+            </div>
+            <input class="set-input" id="gitCustomPrefix" placeholder="No git username configured" />
+          </div>
+
+          <div class="set-section">
+            <div class="set-row">
+              <div class="set-row-body">
+                <div class="set-row-title">Keep local main up to date</div>
+                <div class="set-row-desc">When creating a workspace, refresh the remote base and fast-forward your local main or master if there are no uncommitted changes.</div>
+              </div>
+              <div class="set-row-ctrl"><button type="button" class="set-switch" data-git="keepMainUpdated" aria-label="Keep local main up to date"></button></div>
+            </div>
+            <div class="set-row">
+              <div class="set-row-body">
+                <div class="set-row-title">Source control group order</div>
+                <div class="set-row-desc">Choose whether Changes, Staged Changes, or Untracked Files appear first.</div>
+              </div>
+              <div class="set-row-ctrl">
+                <div class="set-seg" data-git="scGroupOrder">
+                  <button type="button" data-val="changes">Changes first</button>
+                  <button type="button" data-val="staged">Staged first</button>
+                  <button type="button" data-val="untracked">Untracked first</button>
+                </div>
+              </div>
+            </div>
+            <div class="set-row">
+              <div class="set-row-body">
+                <div class="set-row-title">Auto-rename branch</div>
+                <div class="set-row-desc">When an agent starts in a new workspace, rename its auto-generated branch to a short name summarizing the task.</div>
+              </div>
+              <div class="set-row-ctrl"><button type="button" class="set-switch on" data-git="autoRenameBranch" aria-label="Auto-rename branch"></button></div>
+            </div>
+            <div class="set-row">
+              <div class="set-row-body">
+                <div class="set-row-title">Commit attribution</div>
+                <div class="set-row-desc">Add attribution to commits, pull requests, and issues.</div>
+              </div>
+              <div class="set-row-ctrl"><button type="button" class="set-switch" data-git="commitAttribution" aria-label="Commit attribution"></button></div>
+            </div>
+          </div>
+
+          <div class="set-section">
+            <h3>Source control AI</h3>
+            <p class="set-desc">Recipes, prompts, and hosted-review defaults shared by the client.</p>
+            <div class="set-row">
+              <div class="set-row-body">
+                <div class="set-row-title">Show source control AI actions</div>
+                <div class="set-row-desc">Adds AI buttons that run the selected agent with the command template for that action.</div>
+              </div>
+              <div class="set-row-ctrl"><button type="button" class="set-switch on" data-git="showScAiActions" aria-label="Show source control AI actions"></button></div>
+            </div>
+          </div>
+
+          <div class="set-section">
+            <h3>Action recipes</h3>
+            <p class="set-desc">Use variables only when you want the client to inject context. Leave the agent as default to follow your normal agent preference.</p>
+
+            <div class="recipe-card">
+              <div class="recipe-card-head">
+                <div><h4>Commit message</h4><p>Generate the commit message from staged changes.</p></div>
+                <select class="recipe-select"><option>Use default agent</option></select>
+              </div>
+              <div class="recipe-grid">
+                <div><label>CLI arguments</label><input class="set-input" value="--model sonnet" /></div>
+                <div><label>Command template</label><textarea>{basePrompt}</textarea></div>
+              </div>
+              <div class="recipe-vars">{ } Variables: {basePrompt} {branch} {stagedFiles} {stagedPatch}</div>
+            </div>
+
+            <div class="recipe-card">
+              <div class="recipe-card-head">
+                <div><h4>Pull request details</h4><p>Generate the hosted review title and description.</p></div>
+                <select class="recipe-select"><option>Use default agent</option></select>
+              </div>
+              <div class="recipe-grid">
+                <div><label>CLI arguments</label><input class="set-input" value="--model sonnet" /></div>
+                <div><label>Command template</label><textarea>{basePrompt}</textarea></div>
+              </div>
+              <div class="recipe-vars">{ } Variables: {basePrompt} {branch} {baseBranch} {commitSummary} {changedFiles}</div>
+            </div>
+
+            <div class="recipe-card">
+              <div class="recipe-card-head">
+                <div><h4>Branch name</h4><p>Rename auto-created branches from the initial agent task.</p></div>
+                <select class="recipe-select"><option>Use default agent</option></select>
+              </div>
+              <div class="recipe-grid">
+                <div><label>CLI arguments</label><input class="set-input" value="--model sonnet" /></div>
+                <div><label>Command template</label><textarea>{basePrompt}</textarea></div>
+              </div>
+              <div class="recipe-vars">{ } Variables: {basePrompt} {firstPrompt} {assistantMessage}</div>
+            </div>
+          </div>
+
+          <div class="set-section">
+            <h3>Custom command</h3>
+            <p class="set-desc">Used by commit-message, pull-request, and branch-name recipes that select Custom command. Use <code style="font-family:var(--mono);font-size:10.5px;">{prompt}</code> to pass the command input as an argument; otherwise it is piped on stdin.</p>
+            <input class="set-input" id="gitCustomCommand" placeholder="e.g. ollama run llama3.1 {prompt}" />
+          </div>
+
+          <div class="set-section">
+            <h3>Hosted-review creation defaults</h3>
+            <p class="set-desc">Used by repositories that inherit global hosted-review defaults.</p>
+            <div class="set-check-row">
+              <input type="checkbox" id="gitDraftPr" data-git="draftPrByDefault" />
+              <label for="gitDraftPr"><div class="set-row-title">Draft by default</div><div class="set-row-desc">Create hosted reviews as drafts unless changed in the composer.</div></label>
+            </div>
+            <div class="set-check-row">
+              <input type="checkbox" id="gitPrTemplate" data-git="usePrTemplate" checked />
+              <label for="gitPrTemplate"><div class="set-row-title">Use review template when available</div><div class="set-row-desc">Prefer repository pull request templates when no description is set.</div></label>
+            </div>
+            <div class="set-check-row">
+              <input type="checkbox" id="gitGenPrOnOpen" data-git="generatePrOnOpen" />
+              <label for="gitGenPrOnOpen"><div class="set-row-title">Generate details when opening Create PR</div><div class="set-row-desc">Run hosted-review detail generation once when the composer opens.</div></label>
+            </div>
+            <div class="set-check-row">
+              <input type="checkbox" id="gitOpenPrAfter" data-git="openPrAfterCreate" />
+              <label for="gitOpenPrAfter"><div class="set-row-title">Open hosted review after creation</div><div class="set-row-desc">Open the created hosted review in your browser after submit.</div></label>
+            </div>
+          </div>
+
+          <div class="set-section">
+            <div class="budget-card">
+              <h4>GitHub API budget</h4>
+              <p>Uses REST, Search, and GraphQL through the GitHub CLI. Budget scope: local machine.</p>
+              <div class="budget-stat">REST API: <span>4980 of 5000 left · resets in 11m</span></div>
+              <div class="budget-stat">Search API: <span>30 of 30 left · resets in 15s</span></div>
+              <div class="budget-stat">GraphQL API: <span>4983 of 5000 left · resets in 11m</span></div>
+            </div>
+            <div class="budget-card">
+              <h4>GitLab API budget</h4>
+              <p>Uses REST through the GitLab CLI. Budget scope: local machine.</p>
+              <div class="budget-stat"><span>GitLab API budget is unavailable.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="settings-pane" id="settingsPaneAppearance">
+        <p class="settings-pane-intro">Terminal colors come from Ghostty. Customize the side rail here.</p>
+        <div class="settings-scroll">
+          <div class="set-section">
+            <h3>Terminal</h3>
+            <p class="set-desc">Imported from your Ghostty config — not editable in this app.</p>
+            <div class="ghostty-import">
+              <div class="ghostty-import-swatch" id="ghosttyImportSwatch"></div>
+              <div class="ghostty-import-body">
+                <div class="ghostty-import-label">Imported theme</div>
+                <div class="ghostty-import-theme" id="ghosttyThemeName"></div>
+                <div class="ghostty-import-meta" id="ghosttyConfigPath"></div>
+                <div class="ghostty-import-meta" id="ghosttyConfigLine"></div>
+                <div class="ghostty-import-meta">
+                  <button type="button" class="ghostty-path-link" id="ghosttyThemeLocationLink" title="Reveal in Finder"></button>
+                </div>
+              </div>
+              <div class="ghostty-import-actions">
+                <button type="button" class="ghostty-action" id="reloadGhosttyTheme" title="Re-read Ghostty config">Reload</button>
+                <button type="button" class="ghostty-action" id="openGhosttyThemeLocation" title="Reveal theme location in Finder">Open location</button>
+              </div>
+            </div>
+            <p class="ghostty-import-note">Change <code>theme</code> in Ghostty config, then reload. Open location reveals the config file in Finder.</p>
+          </div>
+          <div class="set-section">
+            <h3>Side rail</h3>
+            <p class="set-desc">App chrome only — does not affect the terminal pane.</p>
+            <div class="set-row">
+              <div class="set-row-body">
+                <div class="set-row-title">Background</div>
+                <div class="set-row-desc">Main rail color.</div>
+              </div>
+              <div class="set-row-ctrl color-ctrl color-ctrl-row">
+                <input type="color" id="railBgPicker" aria-label="Rail background color" />
+                <input type="text" class="set-input color-hex" id="railBgHex" spellcheck="false" />
+              </div>
+            </div>
+            <div class="set-row">
+              <div class="set-row-body">
+                <div class="set-row-title">Foreground</div>
+                <div class="set-row-desc">Primary text color in the rail.</div>
+              </div>
+              <div class="set-row-ctrl color-ctrl color-ctrl-row">
+                <input type="color" id="railFgPicker" aria-label="Rail foreground color" />
+                <input type="text" class="set-input color-hex" id="railFgHex" spellcheck="false" />
+              </div>
+            </div>
+            <div class="set-row">
+              <div class="set-row-body">
+                <div class="set-row-title">Rail width</div>
+                <div class="set-row-desc">Horizontal space for the project tree.</div>
+              </div>
+              <div class="set-row-ctrl">
+                <div class="set-seg" data-appearance="railWidth">
+                  <button type="button" data-val="compact">Compact</button>
+                  <button type="button" data-val="default">Default</button>
+                  <button type="button" data-val="wide">Wide</button>
+                </div>
+              </div>
+            </div>
+            <div class="set-row">
+              <div class="set-row-body">
+                <div class="set-row-title">Active session highlight</div>
+                <div class="set-row-desc">Border and fill for the selected session row.</div>
+              </div>
+              <div class="set-row-ctrl color-ctrl color-ctrl-row">
+                <input type="color" id="sessionHighlightPicker" aria-label="Active session highlight color" />
+                <input type="text" class="set-input color-hex" id="sessionHighlightHex" spellcheck="false" />
+              </div>
+            </div>
+            <div class="rail-preview" id="railPreview" aria-hidden="true">
+              <div class="rail-preview-rail">
+                <div class="rail-preview-row"></div>
+                <div class="rail-preview-row active"></div>
+                <div class="rail-preview-row"></div>
+              </div>
+              <div class="rail-preview-main"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script src="icons.js?v=5"></script>
 <script>
 /* ============================================================
-   AGENT DEFINITIONS  (Orca roster -> "pre-open a session by agent")
+   AGENT DEFINITIONS  (Unpeel roster -> "pre-open a session by agent")
    ============================================================ */
 const AGENTS = {
-  claude:   { name: 'Claude Code',  glyph: '✳', color: '#fab387', sub: 'Anthropic · Opus 4.8' },
-  codex:    { name: 'Codex',        glyph: '⬡', color: '#a6d189', sub: 'OpenAI · gpt-5' },
-  cursor:   { name: 'Cursor Agent', glyph: '▸', color: '#8caaee', sub: 'Cursor CLI' },
-  gemini:   { name: 'Gemini',       glyph: '✦', color: '#f2a4db', sub: 'Google · 2.5 Pro' },
-  copilot:  { name: 'Copilot',      glyph: '◐', color: '#81c8be', sub: 'GitHub' },
-  opencode: { name: 'OpenCode',     glyph: '◇', color: '#e5c890', sub: 'open source' },
-  shell:    { name: 'Shell',        glyph: '>_',     color: '#a5adce', sub: 'zsh' },
+  claude:   { name: 'Claude Code',  color: '#e8ddd3', sub: 'Anthropic · Opus 4.8', cmd: 'claude --dangerously-skip-permissions' },
+  codex:    { name: 'Codex',        color: '#ececec', sub: 'OpenAI · gpt-5',       cmd: 'codex --dangerously-bypass-approvals-and-sandbox' },
+  cursor:   { name: 'Cursor Agent', color: '#8caaee', sub: 'Cursor CLI',           cmd: 'cursor-agent --yolo' },
+  gemini:   { name: 'Gemini',       color: '#8ab4f8', sub: 'Google · 2.5 Pro',     cmd: 'gemini --yolo' },
+  copilot:  { name: 'Copilot',      color: '#81c8be', sub: 'GitHub',               cmd: 'copilot' },
+  opencode: { name: 'OpenCode',     color: '#e5c890', sub: 'open source',          cmd: 'opencode' },
+  shell:    { name: 'Shell',        color: '#a5adce', sub: 'zsh',                  cmd: 'zsh' },
 };
+
+const MAX_PINNED_AGENTS = 6;
+const DEFAULT_PINNED_AGENTS = ['opencode', 'cursor', 'gemini', 'codex', 'claude'];
+
+function ghosttyPalette(o) {
+  return {
+    '--g-bg': o.bg, '--g-fg': o.fg, '--g-cursor': o.cursor, '--g-sel': o.sel,
+    '--g-0': o.p0, '--g-8': o.b0, '--g-1': o.p1, '--g-9': o.b1,
+    '--g-2': o.p2, '--g-10': o.b2, '--g-3': o.p3, '--g-11': o.b3,
+    '--g-4': o.p4, '--g-12': o.b4, '--g-5': o.p5, '--g-13': o.b5,
+    '--g-6': o.p6, '--g-14': o.b6, '--g-7': o.p7, '--g-15': o.b7,
+  };
+}
+
+const GHOSTTY_CONFIG_DIR = '~/.config/ghostty';
+const GHOSTTY_CONFIG_PATH = GHOSTTY_CONFIG_DIR + '/config';
+const GHOSTTY_THEMES_DIR = GHOSTTY_CONFIG_DIR + '/themes';
+
+const GHOSTTY_THEMES = {
+  'catppuccin-frappe': {
+    label: 'Catppuccin Frappe',
+    config: 'theme = "catppuccin-frappe"',
+    swatch: ['#303446', '#8caaee', '#a6d189', '#e78284'],
+    vars: ghosttyPalette({
+      bg: '#303446', fg: '#c6d0f5', cursor: '#f2d5cf', sel: '#626880',
+      p0: '#51576d', b0: '#626880', p1: '#e78284', b1: '#e67172',
+      p2: '#a6d189', b2: '#8ec772', p3: '#e5c890', b3: '#d9ba73',
+      p4: '#8caaee', b4: '#7b9ef0', p5: '#f4b8e4', b5: '#f2a4db',
+      p6: '#81c8be', b6: '#5abfb5', p7: '#a5adce', b7: '#b5bfe2',
+    }),
+  },
+  'catppuccin-mocha': {
+    label: 'Catppuccin Mocha',
+    config: 'theme = "catppuccin-mocha"',
+    swatch: ['#1e1e2e', '#89b4fa', '#a6e3a1', '#f38ba8'],
+    vars: ghosttyPalette({
+      bg: '#1e1e2e', fg: '#cdd6f4', cursor: '#f5e0dc', sel: '#45475a',
+      p0: '#45475a', b0: '#585b70', p1: '#f38ba8', b1: '#f37799',
+      p2: '#a6e3a1', b2: '#94e2d5', p3: '#f9e2af', b3: '#f5d080',
+      p4: '#89b4fa', b4: '#7aa2f7', p5: '#f5c2e7', b5: '#f0a6d8',
+      p6: '#94e2d5', b6: '#7bdac8', p7: '#bac2de', b7: '#a6adc8',
+    }),
+  },
+  'catppuccin-macchiato': {
+    label: 'Catppuccin Macchiato',
+    config: 'theme = "catppuccin-macchiato"',
+    swatch: ['#24273a', '#8aadf4', '#a6da95', '#ed8796'],
+    vars: ghosttyPalette({
+      bg: '#24273a', fg: '#cad3f5', cursor: '#f4dbd6', sel: '#494d64',
+      p0: '#494d64', b0: '#5b6078', p1: '#ed8796', b1: '#e78284',
+      p2: '#a6da95', b2: '#8bd5a0', p3: '#eed49f', b3: '#e5c890',
+      p4: '#8aadf4', b4: '#7aa2f7', p5: '#f5bde6', b5: '#f0a6d8',
+      p6: '#8bd5ca', b6: '#7bdac8', p7: '#b8c0e0', b7: '#a5adce',
+    }),
+  },
+  'rose-pine-moon': {
+    label: 'Rose Pine Moon',
+    config: 'theme = "rose-pine-moon"',
+    swatch: ['#232136', '#9ccfd8', '#3e8fb0', '#eb6f92'],
+    vars: ghosttyPalette({
+      bg: '#232136', fg: '#e0def4', cursor: '#e0def4', sel: '#44415a',
+      p0: '#393552', b0: '#6e6a86', p1: '#eb6f92', b1: '#f28cab',
+      p2: '#3e8fb0', b2: '#9ccfd8', p3: '#f6c177', b3: '#f9d49a',
+      p4: '#9ccfd8', b4: '#c4a7e7', p5: '#c4a7e7', b5: '#ea9a97',
+      p6: '#9ccfd8', b6: '#b5e8e0', p7: '#e0def4', b7: '#908caa',
+    }),
+  },
+  'gruvbox-dark': {
+    label: 'Gruvbox Dark',
+    config: 'theme = "gruvbox-dark"',
+    swatch: ['#282828', '#83a598', '#b8bb26', '#fb4934'],
+    vars: ghosttyPalette({
+      bg: '#282828', fg: '#ebdbb2', cursor: '#ebdbb2', sel: '#504945',
+      p0: '#928374', b0: '#665c54', p1: '#fb4934', b1: '#cc241d',
+      p2: '#b8bb26', b2: '#98971a', p3: '#fabd2f', b3: '#d79921',
+      p4: '#83a598', b4: '#458588', p5: '#d3869b', b5: '#b16286',
+      p6: '#8ec07c', b6: '#689d6a', p7: '#ebdbb2', b7: '#a89984',
+    }),
+  },
+};
+
+const RAIL_WIDTHS = { compact: '220px', default: '252px', wide: '288px' };
+
+function normalizeHex(hex) {
+  if (!hex) return null;
+  hex = String(hex).trim().toLowerCase();
+  if (!hex.startsWith('#')) hex = '#' + hex;
+  if (/^#[0-9a-f]{3}$/.test(hex)) {
+    hex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+  }
+  return /^#[0-9a-f]{6}$/.test(hex) ? hex : null;
+}
+
+function hexToRgb(hex) {
+  hex = normalizeHex(hex);
+  if (!hex) return null;
+  var n = parseInt(hex.slice(1), 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function shadeHex(hex, amount) {
+  var rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+  function clamp(v) { return Math.min(255, Math.max(0, v + amount)); }
+  var r = clamp(rgb.r), g = clamp(rgb.g), b = clamp(rgb.b);
+  return '#' + [r, g, b].map(function (c) { return c.toString(16).padStart(2, '0'); }).join('');
+}
+
+function rgbaFromHex(hex, alpha) {
+  var rgb = hexToRgb(hex);
+  if (!rgb) return 'rgba(250,179,135,' + alpha + ')';
+  return 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + alpha + ')';
+}
+
+function deriveChromeFromRail(bg, fg) {
+  bg = normalizeHex(bg) || '#0a0a0c';
+  fg = normalizeHex(fg) || '#e6e6ea';
+  return {
+    railBg: bg,
+    chromeBg: shadeHex(bg, 4),
+    titlebarBg: shadeHex(bg, 14),
+    panelBg: shadeHex(bg, 2),
+    border: shadeHex(bg, 22),
+    borderSoft: shadeHex(bg, 14),
+    hover: shadeHex(bg, 12),
+    text: fg,
+    textDim: rgbaFromHex(fg, 0.55),
+    textFaint: rgbaFromHex(fg, 0.35),
+  };
+}
+
+function getGhosttyImport() {
+  var theme = 'catppuccin-frappe';
+  return {
+    theme: theme,
+    configPath: GHOSTTY_CONFIG_PATH,
+    themesDir: GHOSTTY_THEMES_DIR,
+    configLine: 'theme = "' + theme + '"',
+    themeLocation: GHOSTTY_CONFIG_PATH,
+    themeLocationHint: 'Set theme in Ghostty config (bundled themes use theme = "…")',
+  };
+}
+
+function showProtoToast(msg) {
+  var toast = document.getElementById('protoToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'protoToast';
+    toast.className = 'proto-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(showProtoToast._t);
+  showProtoToast._t = setTimeout(function () { toast.classList.remove('show'); }, 2200);
+}
+
+function openGhosttyThemeLocation() {
+  var imp = getGhosttyImport();
+  showProtoToast('Opening ' + imp.themeLocation + ' in Finder');
+}
+
+function applyGhosttyTheme() {
+  var imp = getGhosttyImport();
+  var theme = GHOSTTY_THEMES[imp.theme] || GHOSTTY_THEMES['catppuccin-frappe'];
+  if (!theme) return;
+  var root = document.documentElement;
+  Object.keys(theme.vars).forEach(function (key) { root.style.setProperty(key, theme.vars[key]); });
+}
+
+function agentIcon(key, size) {
+  return SacredIcons.agentIcon(key, size || 14);
+}
+
+function branchIcon() {
+  return '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7.5l3 7M16 7.5l-3 7"/></svg>';
+}
 
 /* ============================================================
    |---------------------------------------------------------|
@@ -495,23 +1315,206 @@ function seed() {
   return {
     sidebarOpen: true,
     activeId: null,
+    agentEnabled: null,
+    pinnedAgents: null,
+    appearanceSettings: null,
+    gitSettings: defaultGitSettings(),
     projects: [
-      { id: 'p1', name: 'minecraft-replica', path: '~/minecraft-replica', collapsed: false, sessions: [
-        { id: nid(), name: 'Claude Code', agent: 'claude', status: 'working', detail: 'Editing terrain.js · esc to interrupt' },
-        { id: nid(), name: 'dev server',  agent: 'shell',  status: 'idle',    detail: 'localhost:3001' },
+      { id: 'p0', name: 'orchestrator', path: '~/Dev/orchestrator', collapsed: false, sessions: [
+        { id: nid(), agent: 'cursor', task: 'Loop over issues and implement…', status: 'idle' },
       ]},
-      { id: 'p2', name: 'FluidVoice', path: '~/FluidVoice', collapsed: false, sessions: [
-        { id: nid(), name: 'Codex', agent: 'codex', status: 'waiting', detail: 'Apply patch to AudioEngine.swift?' },
+      { id: 'p1', name: 'acme-storefront', path: '~/Dev/acme-storefront', collapsed: false, sessions: [
+        { id: nid(), agent: 'gemini', task: 'Refactor checkout to server components', status: 'working' },
+        { id: nid(), agent: 'codex',  task: 'migrate test suite to vitest', status: 'idle' },
       ]},
-      { id: 'p3', name: 'even-termius-manager', path: '~/even-termius', collapsed: false, sessions: [
-        { id: nid(), name: 'Gemini', agent: 'gemini', status: 'done', detail: 'Turn complete in 59s' },
+      { id: 'p2', name: 'design-system', path: '~/Dev/design-system', collapsed: false, sessions: [
+        { id: nid(), agent: 'claude', task: 'Add dark-mode tokens to Button', status: 'working', browserOpen: true, browserUrl: 'http://localhost:6006' },
+      ]},
+      { id: 'p3', name: 'marketing-site', path: '~/Dev/marketing-site', collapsed: false, sessions: [
+        { id: nid(), agent: 'gemini', task: 'Tighten hero spacing + glass nav', status: 'done', browserOpen: true, browserUrl: 'http://localhost:5173' },
+        { id: nid(), agent: 'claude', task: 'Generate Storybook docs for tokens', status: 'idle' },
+      ]},
+      { id: 'p4', name: 'portfolio-2026', path: '~/Dev/portfolio-2026', collapsed: true, sessions: [
+        { id: nid(), agent: 'codex', task: 'bump deps + fix type errors', status: 'waiting' },
+        { id: nid(), agent: 'claude', task: 'Wire up Plausible analytics', status: 'idle' },
       ]},
     ],
   };
 }
 
 let state = load() || seed();
-state.activeId = state.activeId || (state.projects[0] && state.projects[0].sessions[0] && state.projects[0].sessions[0].id) || null;
+ensureAgentEnabled();
+ensurePinnedAgents();
+ensureAppearanceSettings();
+ensureGitSettings();
+state.activeId = state.activeId || findDefaultActive();
+
+function defaultAppearanceSettings() {
+  return {
+    railBg: '#0a0a0c',
+    railFg: '#e6e6ea',
+    railWidth: 'default',
+    sessionHighlight: '#fab387',
+  };
+}
+
+function ensureAppearanceSettings() {
+  if (!state.appearanceSettings) state.appearanceSettings = defaultAppearanceSettings();
+  var a = state.appearanceSettings;
+  var legacyPresets = {
+    default: { railBg: '#0a0a0c', railFg: '#e6e6ea' },
+    warm: { railBg: '#0c0a09', railFg: '#ece6df' },
+    graphite: { railBg: '#111114', railFg: '#e8e8ed' },
+    midnight: { railBg: '#050508', railFg: '#dedee6' },
+  };
+  var legacyAccents = {
+    orange: '#fab387', blue: '#8caaee', green: '#a6d189', neutral: '#a6a6ae',
+  };
+  if (a.railPreset && !a.railBg && legacyPresets[a.railPreset]) {
+    a.railBg = legacyPresets[a.railPreset].railBg;
+    a.railFg = legacyPresets[a.railPreset].railFg;
+  }
+  if (a.railAccent && !a.sessionHighlight) {
+    a.sessionHighlight = legacyAccents[a.railAccent] || '#fab387';
+  }
+  delete a.ghosttyTheme;
+  delete a.railPreset;
+  delete a.railAccent;
+  var merged = Object.assign(defaultAppearanceSettings(), a);
+  merged.railBg = normalizeHex(merged.railBg) || '#0a0a0c';
+  merged.railFg = normalizeHex(merged.railFg) || '#e6e6ea';
+  merged.sessionHighlight = normalizeHex(merged.sessionHighlight) || '#fab387';
+  if (!RAIL_WIDTHS[merged.railWidth]) merged.railWidth = 'default';
+  state.appearanceSettings = merged;
+}
+
+function applyAppearanceSettings() {
+  ensureAppearanceSettings();
+  applyGhosttyTheme();
+  var a = state.appearanceSettings;
+  var root = document.documentElement;
+  var chrome = deriveChromeFromRail(a.railBg, a.railFg);
+  root.style.setProperty('--rail-bg', chrome.railBg);
+  root.style.setProperty('--chrome-bg', chrome.chromeBg);
+  root.style.setProperty('--titlebar-bg', chrome.titlebarBg);
+  root.style.setProperty('--panel-bg', chrome.panelBg);
+  root.style.setProperty('--border', chrome.border);
+  root.style.setProperty('--border-soft', chrome.borderSoft);
+  root.style.setProperty('--hover', chrome.hover);
+  root.style.setProperty('--text', chrome.text);
+  root.style.setProperty('--text-dim', chrome.textDim);
+  root.style.setProperty('--text-faint', chrome.textFaint);
+  root.style.setProperty('--rail-w', RAIL_WIDTHS[a.railWidth] || RAIL_WIDTHS.default);
+  var hi = a.sessionHighlight;
+  root.style.setProperty('--session-active-bg', rgbaFromHex(hi, 0.06));
+  root.style.setProperty('--session-active-border', rgbaFromHex(hi, 0.45));
+  root.style.setProperty('--session-active-glow', rgbaFromHex(hi, 0.12));
+}
+
+function defaultGitSettings() {
+  return {
+    branchPrefix: 'git',
+    customPrefix: '',
+    keepMainUpdated: false,
+    scGroupOrder: 'changes',
+    autoRenameBranch: true,
+    commitAttribution: false,
+    showScAiActions: true,
+    customCommand: '',
+    draftPrByDefault: false,
+    usePrTemplate: true,
+    generatePrOnOpen: false,
+    openPrAfterCreate: false,
+  };
+}
+
+function ensureGitSettings() {
+  if (!state.gitSettings) state.gitSettings = defaultGitSettings();
+  Object.assign(state.gitSettings, Object.assign(defaultGitSettings(), state.gitSettings));
+}
+
+function ensureAgentEnabled() {
+  if (!state.agentEnabled) {
+    state.agentEnabled = {};
+    Object.keys(AGENTS).forEach(function (k) { state.agentEnabled[k] = true; });
+  }
+  Object.keys(AGENTS).forEach(function (k) {
+    if (state.agentEnabled[k] === undefined) state.agentEnabled[k] = true;
+  });
+}
+
+function isAgentEnabled(key) {
+  ensureAgentEnabled();
+  return !!state.agentEnabled[key];
+}
+
+function enabledAgentKeys() {
+  return Object.keys(AGENTS).filter(isAgentEnabled);
+}
+
+function ensurePinnedAgents() {
+  if (!state.pinnedAgents || !Array.isArray(state.pinnedAgents)) {
+    state.pinnedAgents = DEFAULT_PINNED_AGENTS.slice();
+  }
+  state.pinnedAgents = state.pinnedAgents
+    .filter(function (k) { return AGENTS[k]; })
+    .slice(0, MAX_PINNED_AGENTS);
+}
+
+function isAgentPinned(key) {
+  ensurePinnedAgents();
+  return state.pinnedAgents.indexOf(key) !== -1;
+}
+
+function pinnedCount() {
+  ensurePinnedAgents();
+  return state.pinnedAgents.length;
+}
+
+function pinnedAgentKeys() {
+  ensurePinnedAgents();
+  return state.pinnedAgents.filter(isAgentEnabled);
+}
+
+function barAgentKeys() {
+  return pinnedAgentKeys();
+}
+
+function toggleAgentPin(key) {
+  ensurePinnedAgents();
+  if (!isAgentEnabled(key)) return;
+  var idx = state.pinnedAgents.indexOf(key);
+  if (idx !== -1) {
+    state.pinnedAgents.splice(idx, 1);
+  } else if (state.pinnedAgents.length < MAX_PINNED_AGENTS) {
+    state.pinnedAgents.push(key);
+  }
+  save();
+  renderSettingsAgents();
+  renderTree();
+}
+
+function setAgentEnabled(key, enabled) {
+  ensureAgentEnabled();
+  if (!enabled && isAgentEnabled(key) && enabledAgentKeys().length <= 1) return;
+  state.agentEnabled[key] = !!enabled;
+  if (!enabled && isAgentPinned(key)) {
+    state.pinnedAgents.splice(state.pinnedAgents.indexOf(key), 1);
+  }
+  save();
+  renderSettingsAgents();
+  renderTree();
+}
+
+function findDefaultActive() {
+  for (var i = 0; i < state.projects.length; i++) {
+    var p = state.projects[i];
+    for (var j = 0; j < p.sessions.length; j++) {
+      if (p.name === 'design-system' && p.sessions[j].agent === 'claude') return p.sessions[j].id;
+    }
+  }
+  return state.projects[0] && state.projects[0].sessions[0] && state.projects[0].sessions[0].id || null;
+}
 
 function save() {
   try { localStorage.setItem('cmux-proto', JSON.stringify(Object.assign({}, state, { _uid: uid }))); } catch (e) {}
@@ -522,6 +1525,18 @@ function load() {
     if (!raw) return null;
     const d = JSON.parse(raw);
     uid = d._uid || 50;
+    if (d.projects) {
+      d.projects.forEach(function (p) {
+        p.sessions.forEach(function (s) {
+          if (!s.task) s.task = s.detail || s.name || 'untitled';
+          if (!s.browserUrl) s.browserUrl = defaultBrowserUrl(p);
+          if (s.browserOpen === undefined) {
+            s.browserOpen = (p.name === 'design-system' && s.agent === 'claude') ||
+              (p.name === 'marketing-site' && s.agent === 'gemini');
+          }
+        });
+      });
+    }
     return d;
   } catch (e) { return null; }
 }
@@ -540,6 +1555,38 @@ function findSession(id) {
   return null;
 }
 
+function defaultBrowserUrl(project) {
+  var urls = {
+    'marketing-site': 'http://localhost:5173',
+    'acme-storefront': 'http://localhost:3000',
+    'design-system': 'http://localhost:6006',
+    'orchestrator': 'http://localhost:8080',
+    'portfolio-2026': 'http://localhost:4321',
+  };
+  return urls[project.name] || 'http://localhost:3000';
+}
+
+function browserPreviewSrc(project) {
+  return 'browser-preview.html?p=' + encodeURIComponent(project.name);
+}
+
+function toggleBrowser(force) {
+  var found = state.activeId && findSession(state.activeId);
+  if (!found) return;
+  found.session.browserOpen = force != null ? force : !found.session.browserOpen;
+  save();
+  renderMain();
+}
+
+function showBrowserToast(msg) {
+  var toast = document.querySelector('.browser-toast');
+  if (!toast) return;
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(showBrowserToast._t);
+  showBrowserToast._t = setTimeout(function () { toast.classList.remove('show'); }, 2200);
+}
+
 /* ============================================================
    RENDER: side rail tree
    ============================================================ */
@@ -547,44 +1594,53 @@ function renderTree() {
   const tree = $('#tree');
   tree.innerHTML = '';
 
+  var shortcut = 0;
   state.projects.forEach(p => {
     const proj = el('div', 'project' + (p.collapsed ? ' collapsed' : ''));
 
     const row = el('div', 'project-row');
     row.innerHTML =
-      '<span class="chev">&#9662;</span>' +
-      '<span class="folder">' + (p.collapsed ? folderIcon() : folderOpenIcon()) + '</span>' +
-      '<span class="pname">' + escapeHtml(p.name) + '</span>' +
-      '<span class="ppath">' + escapeHtml(p.path) + '</span>';
-    const add = el('span', 'add-sess', plusIcon());
-    add.title = 'Pre-open a session...';
-    add.onclick = (e) => { e.stopPropagation(); openPicker(p.id, e.currentTarget); };
-    row.appendChild(add);
+      '<span class="folder">' + (p.collapsed ? SacredIcons.folderClosed(14) : SacredIcons.folderOpen(14)) + '</span>' +
+      '<span class="pname">' + escapeHtml(p.name) + '</span>';
+
+    const bar = el('div', 'agent-bar');
+    barAgentKeys().forEach(function (key) {
+      var btn = el('button');
+      btn.type = 'button';
+      btn.title = 'Pre-open ' + AGENTS[key].name;
+      btn.innerHTML = agentIcon(key, 14);
+      btn.onclick = function (e) { e.stopPropagation(); createSession(p.id, key, false); };
+      bar.appendChild(btn);
+    });
+    var plusBtn = el('button');
+    plusBtn.type = 'button';
+    plusBtn.title = 'More agents…';
+    plusBtn.innerHTML = SacredIcons.plus(13);
+    plusBtn.onclick = function (e) { e.stopPropagation(); openPicker(p.id, e.currentTarget); };
+    bar.appendChild(plusBtn);
+    row.appendChild(bar);
+
     row.onclick = () => { p.collapsed = !p.collapsed; save(); renderTree(); };
     proj.appendChild(row);
 
     const sessions = el('div', 'sessions');
-    p.sessions.forEach(s => sessions.appendChild(renderSession(p, s)));
+    p.sessions.forEach(s => {
+      shortcut++;
+      sessions.appendChild(renderSession(p, s, shortcut));
+    });
     proj.appendChild(sessions);
 
     tree.appendChild(proj);
   });
-
-  const count = state.projects.reduce((n, p) => n + p.sessions.length, 0);
-  $('#sbCount').textContent = state.projects.length + ' projects · ' + count + ' sessions';
 }
 
-function renderSession(p, s) {
-  const a = AGENTS[s.agent] || AGENTS.shell;
-  const m = statusMeta(s.status);
+function renderSession(p, s, kbdNum) {
   const node = el('div', 'session' + (s.id === state.activeId ? ' active' : ''));
   node.innerHTML =
-    '<span class="s-glyph" style="color:' + a.color + '">' + a.glyph + '</span>' +
-    '<span class="s-main">' +
-      '<span class="s-name">' + escapeHtml(s.name) + '</span>' +
-      '<span class="s-detail">' + escapeHtml(s.detail || m.label) + '</span>' +
-    '</span>' +
-    '<span class="s-dot ' + (m.pulse ? 'pulse' : '') + '" style="background:' + m.color + '" title="' + m.label + '"></span>' +
+    '<span class="s-handle">' + SacredIcons.dragHandle(11) + '</span>' +
+    '<span class="s-icon">' + SacredIcons.sessionIcon(s.agent, 13, s.status) + '</span>' +
+    '<span class="s-label">' + escapeHtml(s.task || 'untitled') + '</span>' +
+    '<span class="s-meta"><span class="s-kbd">&#8984;' + kbdNum + '</span></span>' +
     '<span class="s-close" title="Close session">&times;</span>';
   node.onclick = (e) => {
     if (e.target.classList.contains('s-close')) { closeSession(p, s); return; }
@@ -594,63 +1650,122 @@ function renderSession(p, s) {
 }
 
 /* ============================================================
-   RENDER: main terminal pane (no tabs -- single active session)
+   RENDER: titlebar session context + main pane
    ============================================================ */
+function renderTitleSession(found) {
+  var bar = $('#titleSession');
+  if (!bar) return;
+  if (!found) {
+    bar.classList.remove('visible');
+    bar.innerHTML = '';
+    return;
+  }
+  var project = found.project, session = found.session;
+  bar.classList.add('visible');
+  bar.innerHTML =
+    '<div class="title-crumb">' +
+      '<span class="proj-name">' + escapeHtml(project.name) + '</span>' +
+      '<span class="sep">›</span>' +
+      '<span class="sess-title">' + escapeHtml(session.task || 'untitled') + '</span>' +
+    '</div>' +
+    '<div class="title-actions">' +
+      '<button type="button" class="term-browser-btn' + (session.browserOpen ? ' on' : '') + '" title="Toggle browser (⌘⌥B)" aria-label="Toggle browser">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+          '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/>' +
+        '</svg>' +
+      '</button>' +
+      '<span class="branch">' + branchIcon() + ' main</span>' +
+    '</div>';
+  bar.querySelector('.term-browser-btn').onclick = function () { toggleBrowser(); };
+}
+
 function renderMain() {
   const main = $('#main');
   main.innerHTML = '';
   const found = state.activeId && findSession(state.activeId);
+  renderTitleSession(found);
 
   if (!found) {
     main.appendChild(renderEmpty());
-    $('#sbInfo').textContent = 'no active session';
     return;
   }
 
   const project = found.project, session = found.session;
   const a = AGENTS[session.agent] || AGENTS.shell;
-  const m = statusMeta(session.status);
+  if (!session.browserUrl) session.browserUrl = defaultBrowserUrl(project);
 
-  const head = el('div', 'sess-head');
-  head.innerHTML =
-    '<span class="sh-glyph" style="color:' + a.color + '">' + a.glyph + '</span>' +
-    '<span class="sh-title">' + escapeHtml(session.name) + '</span>' +
-    '<span class="sh-path">' + escapeHtml(project.path) + '</span>' +
-    '<span class="spacer"></span>' +
-    '<span class="chip"><span class="s-dot ' + (m.pulse ? 'pulse' : '') + '" style="background:' + m.color + '"></span>' + m.label + '</span>';
-  main.appendChild(head);
+  const workspace = el('div', 'workspace' + (session.browserOpen ? ' browser-open' : ''));
+  const pane = el('div', 'term-pane');
 
   const term = el('div', 'term');
   term.innerHTML = banner(session, project);
-  main.appendChild(term);
+  pane.appendChild(term);
 
   const input = el('div', 'term-input');
-  input.innerHTML = '<span class="ip">' + a.glyph + '</span>';
+  input.innerHTML = '<span class="ip">' + SacredIcons.sessionIcon(session.agent, 14, session.status) + '</span>';
   const field = el('input');
   field.placeholder = session.agent === 'shell' ? 'type a command...' : ('message ' + a.name + '...');
   field.onkeydown = (e) => {
     if (e.key === 'Enter' && field.value.trim()) {
-      appendLine(term, field.value.trim());
+      var msg = field.value.trim();
+      appendLine(term, msg);
       field.value = '';
       session.status = 'working';
-      session.detail = 'Working · esc to interrupt';
+      session.task = msg;
+      var titleEl = $('#titleSession .sess-title');
+      if (titleEl) titleEl.textContent = msg;
       save(); renderTree();
-      head.querySelector('.chip').innerHTML =
-        '<span class="s-dot pulse" style="background:' + statusMeta('working').color + '"></span>Working';
+      input.querySelector('.ip').innerHTML = SacredIcons.sessionIcon(session.agent, 14, 'working');
     }
   };
   input.appendChild(field);
-  main.appendChild(input);
+  pane.appendChild(input);
+  workspace.appendChild(pane);
 
-  $('#sbInfo').textContent = project.name + ' > ' + session.name;
+  if (session.browserOpen) {
+    const browser = el('div', 'browser-pane');
+    const toolbar = el('div', 'browser-toolbar');
+    toolbar.innerHTML =
+      '<button type="button" title="Back" aria-label="Back"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>' +
+      '<button type="button" title="Forward" aria-label="Forward"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>' +
+      '<button type="button" data-reload title="Reload" aria-label="Reload"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>' +
+      '<div class="browser-url">' +
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/></svg>' +
+        '<input type="text" spellcheck="false" value="' + escapeHtml(session.browserUrl) + '" />' +
+      '</div>' +
+      '<button type="button" data-close title="Close browser" aria-label="Close browser"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
+    const urlInput = toolbar.querySelector('.browser-url input');
+    urlInput.onkeydown = function (e) {
+      if (e.key === 'Enter') {
+        session.browserUrl = urlInput.value.trim() || session.browserUrl;
+        save();
+        renderMain();
+      }
+    };
+    toolbar.querySelector('[data-reload]').onclick = function () { renderMain(); };
+    toolbar.querySelector('[data-close]').onclick = function () { toggleBrowser(false); };
+    browser.appendChild(toolbar);
+
+    const frameWrap = el('div', 'browser-frame-wrap');
+    const frame = el('iframe', 'browser-frame');
+    frame.src = browserPreviewSrc(project);
+    frame.title = 'Session preview';
+    frameWrap.appendChild(frame);
+    const toast = el('div', 'browser-toast');
+    frameWrap.appendChild(toast);
+    browser.appendChild(frameWrap);
+    workspace.appendChild(browser);
+  }
+
+  main.appendChild(workspace);
 }
 
 function renderEmpty() {
   const e = el('div', 'empty');
   e.innerHTML =
-    '<div class="ghost-art">  .-----.\n ( o   o )\n (   ^   )\n  \"\"\"\"\"\"\"</div>' +
+    '<div class="ghost-art">' + agentIcon('claude', 28) + '</div>' +
     '<div class="big">No session open</div>' +
-    '<div>Pick a project in the rail and pre-open an agent.</div>';
+    '<div>Hover a project and pick an agent, or press &#8984;N.</div>';
   const pill = el('div', 'pill', '+ New session');
   pill.onclick = (ev) => {
     const p = state.projects[0];
@@ -666,17 +1781,21 @@ function renderEmpty() {
 function banner(s, p) {
   const path = '<span class="dim">' + escapeHtml(p.path) + '</span>';
   if (s.agent === 'claude') {
-    return '<span class="orange b">✳ Claude Code</span> <span class="dim">v2.1.195</span>\n' +
-      '<span class="dim">  Opus 4.8 (1M context) with xhigh effort · Claude Max</span>\n' +
+    return SacredIcons.claudePixel(16) + ' <span class="orange b">Claude Code</span> <span class="dim">v2.1.170</span>\n' +
+      '<span class="dim">  Fable 5 with high effort · Claude Max</span>\n' +
       '  ' + path + '\n\n' +
-      '<span class="c2">  Tips for getting started:</span>\n' +
-      '<span class="dim">  - Run</span> <span class="c4">/init</span> <span class="dim">to create a CLAUDE.md</span>\n' +
-      '<span class="dim">  - Use</span> <span class="c4">@</span> <span class="dim">to reference files, /agents to spawn subagents</span>\n\n' +
-      '<span class="c3">*</span> I have finished mapping the terrain generator. ' + detailLine(s) + '\n' +
-      '<span class="orange">&rsaquo;</span> <span class="cursor"></span>';
+      '<span class="c4">● Read</span><span class="dim">(src/components/Button.tsx)</span>\n' +
+      '<span class="c4">● Update</span><span class="dim">(src/components/Button.tsx)</span>\n' +
+      '<span class="dim">  Mapping the accent + surface colors onto the dark-mode theme tokens.</span>\n' +
+      '<span class="dim">  └ Read 142 lines</span>\n\n' +
+      '<span class="dim">  40</span>  <span class="c1">- &lt;button className="bg-white text-black"&gt;</span>\n' +
+      '<span class="dim">  41</span>  <span class="c2">+ &lt;button className="bg-surface text-foreground"&gt;</span>\n\n' +
+      '<span class="dim">&gt;</span> <span class="fg">make the focus ring use the accent token</span>\n' +
+      '<span class="orange">Waddling...</span> <span class="dim">(1m 12s · ↓ 6.4k tokens · high effort)</span>\n' +
+      '<span class="c2">&rsaquo;</span> <span class="cursor"></span>';
   }
   if (s.agent === 'codex') {
-    return '<span class="c2 b">⬡ OpenAI Codex</span> <span class="dim">v0.136.0</span>\n' +
+    return agentIcon('codex', 14) + ' <span class="c2 b">OpenAI Codex</span> <span class="dim">v0.136.0</span>\n' +
       '<span class="dim">  gpt-5 · medium reasoning</span>\n' +
       '  ' + path + '\n\n' +
       '<span class="c3">&rsaquo;</span> apply patch to <span class="c4">AudioEngine.swift</span>?\n' +
@@ -688,12 +1807,13 @@ function banner(s, p) {
       '<span class="c2">&rsaquo;</span> <span class="cursor"></span>';
   }
   if (s.agent === 'gemini') {
-    return '<span class="c5 b">✦ Gemini CLI</span>\n' +
+    return agentIcon('gemini', 14) + ' <span class="c5 b">Gemini CLI</span>\n' +
       '<span class="dim">  gemini-2.5-pro</span>\n' +
       '  ' + path + '\n\n' +
-      '<span class="c6">✓</span> Refactored the SSH session manager into a service.\n' +
+      '<span class="c6">✓</span> Refactored the checkout flow into server components.\n' +
       '<span class="dim">  3 files changed · 84 insertions · 21 deletions</span>\n' +
       '<span class="c4">  Turn complete in 59s.</span>\n' +
+      '<span class="dim">  browser snapshot → 12 refs · preview at localhost:5173</span>\n' +
       '<span class="c5">&rsaquo;</span> <span class="cursor"></span>';
   }
   // shell + others
@@ -702,7 +1822,7 @@ function banner(s, p) {
 }
 
 function detailLine(s) {
-  return '<span class="dim">(' + escapeHtml(s.detail || '') + ')</span>';
+  return '<span class="dim">(' + escapeHtml(s.task || s.detail || '') + ')</span>';
 }
 
 function appendLine(term, text) {
@@ -719,33 +1839,56 @@ function appendLine(term, text) {
    ============================================================ */
 function openPicker(projectId, anchor) {
   const picker = $('#picker'), scrim = $('#scrim'), list = $('#agentList');
+  picker.dataset.projectId = projectId;
+  $('#pickerWorktree').checked = false;
   list.innerHTML = '';
-  Object.keys(AGENTS).forEach(key => {
+  enabledAgentKeys().forEach(key => {
     const a = AGENTS[key];
     const item = el('div', 'agent');
     item.innerHTML =
-      '<span class="ag-glyph" style="color:' + a.color + '">' + a.glyph + '</span>' +
-      '<span><div class="ag-name">' + a.name + '</div><div class="ag-sub">' + a.sub + '</div></span>';
-    item.onclick = () => { createSession(projectId, key); closePicker(); };
+      '<span class="ag-icon">' + SacredIcons.agentIconPicker(key, 20) + '</span>' +
+      '<span class="ag-body"><div class="ag-name">' + a.name + '</div><div class="ag-sub">' + a.sub + '</div></span>';
+    item.onclick = () => {
+      createSession(projectId, key, $('#pickerWorktree').checked);
+      closePicker();
+    };
     list.appendChild(item);
   });
+  if (!list.children.length) {
+    list.innerHTML = '<div style="padding:12px 10px;color:var(--text-dim);font-size:12px;line-height:1.45;">No agents enabled. Open settings to turn one on.</div>';
+  }
 
   const r = anchor.getBoundingClientRect();
-  picker.style.left = Math.min(r.left, window.innerWidth - 300) + 'px';
-  picker.style.top  = Math.min(r.bottom + 6, window.innerHeight - 380) + 'px';
+  picker.style.left = Math.min(r.left, window.innerWidth - 380) + 'px';
+  picker.style.top  = Math.min(r.bottom + 6, window.innerHeight - 420) + 'px';
   picker.classList.add('open');
   scrim.classList.add('open');
 }
-function closePicker() { $('#picker').classList.remove('open'); $('#scrim').classList.remove('open'); }
+function closePicker() {
+  $('#picker').classList.remove('open');
+  if (!$('#modal').classList.contains('open') && !$('#projectMenu').classList.contains('open') && !$('#settingsPanel').classList.contains('open')) $('#scrim').classList.remove('open');
+}
 
-function createSession(projectId, agentKey) {
+function createSession(projectId, agentKey, worktree) {
   const p = state.projects.find(x => x.id === projectId);
   if (!p) return;
   const a = AGENTS[agentKey];
+  const defaults = {
+    claude: 'New Claude session',
+    codex: 'New Codex session',
+    cursor: 'New Cursor session',
+    gemini: 'New Gemini session',
+    copilot: 'New Copilot session',
+    opencode: 'New OpenCode session',
+    shell: 'zsh',
+  };
   const s = {
-    id: nid(), name: a.name, agent: agentKey,
+    id: nid(), agent: agentKey,
+    task: defaults[agentKey] || a.name,
     status: agentKey === 'shell' ? 'idle' : 'working',
-    detail: agentKey === 'shell' ? 'zsh' : 'Starting up...',
+    worktree: !!worktree,
+    browserUrl: defaultBrowserUrl(p),
+    browserOpen: false,
   };
   p.sessions.push(s);
   p.collapsed = false;
@@ -769,28 +1912,268 @@ function toggleRail(force) {
   save();
 }
 
-/* add-project modal */
-function openModal() {
+/* add-project modal + menu */
+var modalMode = 'create';
+
+function openProjectMenu(anchor) {
+  closePicker(); closeModal(); closeSettings();
+  var menu = $('#projectMenu');
+  var r = anchor.getBoundingClientRect();
+  menu.style.left = Math.min(r.right - 196, window.innerWidth - 210) + 'px';
+  menu.style.top = (r.bottom + 6) + 'px';
+  menu.classList.add('open');
+  $('#scrim').classList.add('open');
+}
+function closeProjectMenu() {
+  $('#projectMenu').classList.remove('open');
+  if (!$('#modal').classList.contains('open') && !$('#picker').classList.contains('open') && !$('#settingsPanel').classList.contains('open')) $('#scrim').classList.remove('open');
+}
+
+function openModal(mode) {
+  modalMode = mode || 'create';
+  closeProjectMenu();
   $('#modal').classList.add('open');
   $('#scrim').classList.add('open');
+  $('#modalTitle').textContent = mode === 'import' ? 'Import folder' : 'Create project';
+  $('#mPath').placeholder = mode === 'import' ? '~/code/existing-project' : '~/code/my-project';
   $('#mName').value = ''; $('#mPath').value = '';
-  setTimeout(() => $('#mName').focus(), 0);
+  setTimeout(function () { (mode === 'import' ? $('#mPath') : $('#mName')).focus(); }, 0);
 }
-function closeModal() { $('#modal').classList.remove('open'); $('#scrim').classList.remove('open'); }
+function closeModal() {
+  $('#modal').classList.remove('open');
+  if (!$('#picker').classList.contains('open') && !$('#settingsPanel').classList.contains('open')) $('#scrim').classList.remove('open');
+}
 function addProjectFromModal() {
-  const name = $('#mName').value.trim() || 'untitled';
+  const name = $('#mName').value.trim() || ($('#mPath').value.trim().split('/').pop() || 'untitled');
   const path = $('#mPath').value.trim() || ('~/' + name);
   state.projects.push({ id: 'p' + nid(), name: name, path: path, collapsed: false, sessions: [] });
   save(); renderTree(); closeModal();
 }
 
+/* settings panel */
+function switchSettingsTab(tab) {
+  document.querySelectorAll('.settings-tab').forEach(function (btn) {
+    btn.classList.toggle('on', btn.getAttribute('data-tab') === tab);
+  });
+  var paneIds = {
+    agents: 'settingsPaneAgents',
+    git: 'settingsPaneGit',
+    appearance: 'settingsPaneAppearance',
+  };
+  document.querySelectorAll('.settings-pane').forEach(function (pane) {
+    pane.classList.toggle('on', pane.id === (paneIds[tab] || paneIds.agents));
+  });
+}
+
+function syncGitSettingsUI() {
+  ensureGitSettings();
+  var g = state.gitSettings;
+  document.querySelectorAll('.set-seg[data-git]').forEach(function (seg) {
+    var key = seg.getAttribute('data-git');
+    var val = g[key];
+    seg.querySelectorAll('button').forEach(function (btn) {
+      btn.classList.toggle('on', btn.getAttribute('data-val') === val);
+    });
+  });
+  document.querySelectorAll('.set-switch[data-git]').forEach(function (sw) {
+    var key = sw.getAttribute('data-git');
+    sw.classList.toggle('on', !!g[key]);
+  });
+  document.querySelectorAll('input[type=checkbox][data-git]').forEach(function (cb) {
+    var key = cb.getAttribute('data-git');
+    cb.checked = !!g[key];
+  });
+  $('#gitCustomPrefix').value = g.customPrefix || '';
+  $('#gitCustomPrefix').style.display = g.branchPrefix === 'custom' ? '' : 'none';
+  $('#gitCustomCommand').value = g.customCommand || '';
+}
+
+function syncGhosttyImportUI() {
+  var imp = getGhosttyImport();
+  var t = GHOSTTY_THEMES[imp.theme];
+  var nameEl = $('#ghosttyThemeName');
+  if (!nameEl) return;
+  nameEl.textContent = imp.theme;
+  $('#ghosttyConfigPath').textContent = imp.configPath;
+  $('#ghosttyConfigLine').textContent = imp.configLine;
+  var locLink = $('#ghosttyThemeLocationLink');
+  if (locLink) {
+    locLink.textContent = imp.themeLocation;
+    locLink.title = imp.themeLocationHint + ' · Reveal in Finder';
+  }
+  var openBtn = $('#openGhosttyThemeLocation');
+  if (openBtn) openBtn.title = imp.themeLocationHint + ' · Reveal in Finder';
+  var swatch = $('#ghosttyImportSwatch');
+  if (swatch && t) swatch.style.background = 'linear-gradient(135deg,' + t.swatch.join(',') + ')';
+}
+
+function syncAppearanceSettingsUI() {
+  ensureAppearanceSettings();
+  syncGhosttyImportUI();
+  var a = state.appearanceSettings;
+  [
+    ['railBgPicker', 'railBgHex', 'railBg'],
+    ['railFgPicker', 'railFgHex', 'railFg'],
+    ['sessionHighlightPicker', 'sessionHighlightHex', 'sessionHighlight'],
+  ].forEach(function (pair) {
+    var picker = $('#' + pair[0]);
+    var hexInput = $('#' + pair[1]);
+    if (picker) picker.value = a[pair[2]];
+    if (hexInput) hexInput.value = a[pair[2]];
+  });
+  document.querySelectorAll('.set-seg[data-appearance]').forEach(function (seg) {
+    var key = seg.getAttribute('data-appearance');
+    var val = a[key];
+    seg.querySelectorAll('button').forEach(function (btn) {
+      btn.classList.toggle('on', btn.getAttribute('data-val') === val);
+    });
+  });
+}
+
+function wireColorField(pickerId, hexId, stateKey) {
+  var picker = $('#' + pickerId);
+  var hexInput = $('#' + hexId);
+  function apply(val) {
+    val = normalizeHex(val);
+    if (!val) return;
+    state.appearanceSettings[stateKey] = val;
+    applyAppearanceSettings();
+    syncAppearanceSettingsUI();
+    save();
+  }
+  if (picker) picker.oninput = function () { apply(this.value); };
+  if (hexInput) {
+    hexInput.onchange = function () { apply(this.value); };
+    hexInput.onkeydown = function (e) {
+      if (e.key === 'Enter') { apply(this.value); this.blur(); }
+    };
+  }
+}
+
+function wireAppearanceSettings() {
+  wireColorField('railBgPicker', 'railBgHex', 'railBg');
+  wireColorField('railFgPicker', 'railFgHex', 'railFg');
+  wireColorField('sessionHighlightPicker', 'sessionHighlightHex', 'sessionHighlight');
+  document.querySelectorAll('.set-seg[data-appearance]').forEach(function (seg) {
+    var key = seg.getAttribute('data-appearance');
+    seg.querySelectorAll('button').forEach(function (btn) {
+      btn.onclick = function () {
+        state.appearanceSettings[key] = btn.getAttribute('data-val');
+        applyAppearanceSettings();
+        syncAppearanceSettingsUI();
+        save();
+      };
+    });
+  });
+  var reload = $('#reloadGhosttyTheme');
+  if (reload) {
+    reload.onclick = function () {
+      applyGhosttyTheme();
+      syncGhosttyImportUI();
+    };
+  }
+  var openLoc = $('#openGhosttyThemeLocation');
+  if (openLoc) openLoc.onclick = openGhosttyThemeLocation;
+  var locLink = $('#ghosttyThemeLocationLink');
+  if (locLink) locLink.onclick = openGhosttyThemeLocation;
+}
+
+function wireGitSettings() {
+  document.querySelectorAll('.set-seg[data-git]').forEach(function (seg) {
+    var key = seg.getAttribute('data-git');
+    seg.querySelectorAll('button').forEach(function (btn) {
+      btn.onclick = function () {
+        state.gitSettings[key] = btn.getAttribute('data-val');
+        if (key === 'branchPrefix') $('#gitCustomPrefix').style.display = state.gitSettings.branchPrefix === 'custom' ? '' : 'none';
+        syncGitSettingsUI();
+        save();
+      };
+    });
+  });
+  document.querySelectorAll('.set-switch[data-git]').forEach(function (sw) {
+    var key = sw.getAttribute('data-git');
+    sw.onclick = function () {
+      state.gitSettings[key] = !state.gitSettings[key];
+      syncGitSettingsUI();
+      save();
+    };
+  });
+  document.querySelectorAll('input[type=checkbox][data-git]').forEach(function (cb) {
+    var key = cb.getAttribute('data-git');
+    cb.onchange = function () {
+      state.gitSettings[key] = cb.checked;
+      save();
+    };
+  });
+  $('#gitCustomPrefix').oninput = function () {
+    state.gitSettings.customPrefix = this.value;
+    save();
+  };
+  $('#gitCustomCommand').oninput = function () {
+    state.gitSettings.customCommand = this.value;
+    save();
+  };
+}
+
+function renderSettingsAgents() {
+  var list = $('#settingsAgentList');
+  var keys = Object.keys(AGENTS);
+  var pinned = pinnedCount();
+  $('#settingsPinnedCount').textContent = pinned + '/' + MAX_PINNED_AGENTS;
+  $('#settingsDetectedCount').textContent = keys.length + ' detected';
+  list.innerHTML = '';
+  keys.forEach(function (key) {
+    var a = AGENTS[key];
+    var on = isAgentEnabled(key);
+    var pinOn = isAgentPinned(key);
+    var pinDisabled = !on || (!pinOn && pinned >= MAX_PINNED_AGENTS);
+    var row = el('div', 'setting-agent' + (on ? '' : ' is-off'));
+    row.innerHTML =
+      '<div class="setting-agent-icon">' + SacredIcons.agentIconPicker(key, 20) + '</div>' +
+      '<div class="setting-agent-body">' +
+        '<div class="setting-agent-title"><span class="name">' + escapeHtml(a.name) + '</span><span class="pill">Detected</span></div>' +
+        '<div class="setting-agent-cmd">' + escapeHtml(a.cmd) + '</div>' +
+      '</div>' +
+      '<div class="setting-agent-ctrls">' +
+        '<button type="button" class="pin-btn' + (pinOn ? ' on' : '') + '" title="' +
+          (pinOn ? 'Unpin from quick select' : (pinDisabled && pinned >= MAX_PINNED_AGENTS ? 'Maximum 6 pinned' : 'Pin for quick select')) +
+          '" aria-label="Pin agent"' + (pinDisabled ? ' disabled' : '') + '>' +
+          '<svg width="13" height="13" viewBox="0 0 24 24" fill="' + (pinOn ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M12 17v5"/><path d="M9 3h6l1 7H8l1-7z"/><path d="M9 10v4l-3 3h12l-3-3v-4"/>' +
+          '</svg>' +
+        '</button>' +
+        '<div class="seg-toggle" data-agent="' + key + '">' +
+          '<button type="button" class="' + (on ? 'on' : '') + '" data-enabled="1">Enabled</button>' +
+          '<button type="button" class="' + (!on ? 'on-off' : '') + '" data-enabled="0">Disabled</button>' +
+        '</div>' +
+      '</div>';
+    var pinBtn = row.querySelector('.pin-btn');
+    if (!pinDisabled) pinBtn.onclick = function () { toggleAgentPin(key); };
+    row.querySelectorAll('.seg-toggle button').forEach(function (btn) {
+      btn.onclick = function () { setAgentEnabled(key, btn.getAttribute('data-enabled') === '1'); };
+    });
+    list.appendChild(row);
+  });
+}
+
+function openSettings(tab) {
+  closePicker(); closeModal(); closeProjectMenu();
+  renderSettingsAgents();
+  syncGitSettingsUI();
+  syncAppearanceSettingsUI();
+  switchSettingsTab(tab || 'agents');
+  $('#settingsPanel').classList.add('open');
+  $('#scrim').classList.add('open');
+}
+
+function closeSettings() {
+  $('#settingsPanel').classList.remove('open');
+  if (!$('#modal').classList.contains('open') && !$('#picker').classList.contains('open') && !$('#projectMenu').classList.contains('open')) $('#scrim').classList.remove('open');
+}
+
 /* ============================================================
    ICONS / utils
    ============================================================ */
-function folderIcon()     { return svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'); }
-function folderOpenIcon() { return svg('<path d="M3 16l2.5-7H22l-2.4 7a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2"/>'); }
-function plusIcon()       { return svg('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'); }
-function svg(inner)       { return '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">' + inner + '</svg>'; }
 function escapeHtml(s)    { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 /* ============================================================
@@ -799,23 +2182,41 @@ function escapeHtml(s)    { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp
 function render() { renderTree(); renderMain(); }
 
 $('#toggleRail').onclick = () => toggleRail();
-$('#addProject').onclick = openModal;
-$('#addProject2').onclick = openModal;
-$('#scrim').onclick = () => { closePicker(); closeModal(); };
+$('#openSettings').onclick = (e) => { e.stopPropagation(); openSettings('agents'); };
+$('#closeSettings').onclick = closeSettings;
+document.querySelectorAll('.settings-tab').forEach(function (btn) {
+  btn.onclick = function () { switchSettingsTab(btn.getAttribute('data-tab')); };
+});
+wireGitSettings();
+wireAppearanceSettings();
+applyAppearanceSettings();
+$('#addProject').onclick = (e) => { e.stopPropagation(); openProjectMenu(e.currentTarget); };
+$('#projectMenu').querySelectorAll('button').forEach(function (btn) {
+  btn.onclick = function () { openModal(btn.getAttribute('data-mode')); };
+});
+$('#scrim').onclick = () => { closePicker(); closeModal(); closeProjectMenu(); closeSettings(); };
 $('#mCancel').onclick = closeModal;
 $('#mAdd').onclick = addProjectFromModal;
 $('#mPath').onkeydown = (e) => { if (e.key === 'Enter') addProjectFromModal(); };
 $('#mName').onkeydown = (e) => { if (e.key === 'Enter') $('#mPath').focus(); };
 
 document.addEventListener('keydown', (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); toggleRail(); }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b' && !e.altKey) { e.preventDefault(); toggleRail(); }
+  if ((e.metaKey || e.ctrlKey) && e.altKey && e.key.toLowerCase() === 'b') { e.preventDefault(); toggleBrowser(); }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
     e.preventDefault();
     const found = state.activeId && findSession(state.activeId);
     const p = found ? found.project : state.projects[0];
     if (p) openPicker(p.id, $('#addProject'));
   }
-  if (e.key === 'Escape') { closePicker(); closeModal(); }
+  if (e.key === 'Escape') { closePicker(); closeModal(); closeProjectMenu(); closeSettings(); }
+});
+
+window.addEventListener('message', function (e) {
+  if (!e.data || e.data.type !== 'browser-send') return;
+  var found = state.activeId && findSession(state.activeId);
+  var agent = found ? (AGENTS[found.session.agent] || AGENTS.shell).name : 'agent';
+  showBrowserToast('Sent ref ' + e.data.ref + ' (' + e.data.tag + ') to ' + agent);
 });
 
 toggleRail(state.sidebarOpen);

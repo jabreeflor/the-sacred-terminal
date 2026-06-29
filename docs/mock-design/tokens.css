@@ -1,0 +1,20 @@
+:root {
+  --bg:         #08080a;
+  --chrome-bg:  #0c0c0e;
+  --rail-bg:    #0a0a0c;
+  --titlebar-bg:#131316;
+  --panel-bg:   #0e0e11;
+  --border:     #1c1c20;
+  --hover:      #16161a;
+  --text:       #e6e6ea;
+  --text-dim:   #8a8a93;
+  --text-faint: #5b5b63;
+  --orange:     #fab387;
+  --green:      #a6d189;
+  --blue:       #8caaee;
+  --pink:       #f2a4db;
+  --ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+  --radius-window: 12px;
+  --radius-pill: 999px;
+}
