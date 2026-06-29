@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# logs
+*.log
+
+# node (future)
+node_modules/
+
+# tooling scratch
+.playwright-mcp/
