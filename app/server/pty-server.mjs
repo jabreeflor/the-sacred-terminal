@@ -107,9 +107,9 @@ function spawnSession(sid, opts) {
   sessions.set(sid, sess)
 
   if (launch.note) {
-    const banner = `\x1b[38;5;221m${launch.note}\x1b[0m\r\n`
-    appendBuffer(sess, banner)
-    queueMicrotask(() => broadcast(sess, banner))
+    // Seed the banner into scrollback; the connecting socket gets it via replay,
+    // and any already-attached sockets get it on the next data flush.
+    appendBuffer(sess, `\x1b[38;5;221m${launch.note}\x1b[0m\r\n`)
   }
 
   child.onData((data) => {

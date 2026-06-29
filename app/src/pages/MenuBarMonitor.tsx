@@ -32,7 +32,8 @@ const CSS = `
 .mbm .row { display:flex; align-items:center; gap:13px; padding:11px 13px; border-radius:10px; cursor:pointer; position:relative; }
 .mbm .row:hover, .mbm .row.active { background:rgba(255,255,255,.06); }
 .mbm .row .lead { width:18px; flex:0 0 18px; display:grid; place-items:center; }
-.mbm .row .body { flex:1; min-width:0; }
+.mbm .row .body { flex:1; min-width:0; display:block; }
+.mbm .row .sub { display:block; }
 .mbm .row .title { font-size:14px; font-weight:500; color:#f1f0f5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .mbm .row .sub { font-size:12px; color:var(--text-faint); margin-top:2px; }
 .mbm .row .ident { width:22px; flex:0 0 22px; display:grid; place-items:center; }
