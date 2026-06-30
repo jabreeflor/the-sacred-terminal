@@ -25,9 +25,6 @@ final class RootViewController: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
     deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
 
-    /// The 38px titlebar bar, installed by MainWindowController as a titlebar accessory.
-    var titlebarView: NSView { titlebar }
-
     private var railWidth: NSLayoutConstraint!
 
     override func loadView() {

@@ -5,7 +5,7 @@ import AppKit
 /// header + ✕, folder-style tabs, and flat panes (sections separated by headings
 /// and 1px dividers — never boxed, except the mock's explicit recipe/budget/import
 /// cards). Controls write into `AppState.shared` and call `changed()`.
-final class SettingsWindowController: NSWindowController {
+final class SettingsWindowController: NSObject {
     static let shared = SettingsWindowController()
 
     enum Tab: String, CaseIterable {
@@ -40,75 +40,117 @@ final class SettingsWindowController: NSWindowController {
 
     // MARK: - Init
 
-    private init() {
-        let window = PanelWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 640),
-            styleMask: [.borderless], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.isMovableByWindowBackground = true
-        window.appearance = NSAppearance(named: .darkAqua)
-        window.backgroundColor = .clear
-        window.isOpaque = false
-        window.hasShadow = true
-        super.init(window: window)
+    /// The rounded panel (mock `.settings-panel`), built once and re-hosted on show.
+    private var container: NSView!
+    private weak var scrim: NSView?
+    private var keyMonitor: Any?
 
-        // Rounded, bordered container = the mock panel.
-        let container = NSView()
-        container.wantsLayer = true
-        container.layer?.backgroundColor = panelBg.cgColor
-        container.layer?.cornerRadius = 12
-        container.layer?.borderWidth = 1
-        container.layer?.borderColor = inputLine.cgColor
-        container.layer?.masksToBounds = true
-        window.contentView = container
-
-        let header = makeHeader()
-        let tabs = makeTabBar()
-        paneContainer.translatesAutoresizingMaskIntoConstraints = false
-
-        container.addSubview(header)
-        container.addSubview(tabs)
-        container.addSubview(paneContainer)
-
-        NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: container.topAnchor),
-            header.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            header.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            header.heightAnchor.constraint(equalToConstant: 44),
-
-            tabs.topAnchor.constraint(equalTo: header.bottomAnchor),
-            tabs.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            tabs.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            tabs.heightAnchor.constraint(equalToConstant: 40),
-
-            paneContainer.topAnchor.constraint(equalTo: tabs.bottomAnchor),
-            paneContainer.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            paneContainer.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            paneContainer.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-        ])
-
+    private override init() {
+        super.init()
+        buildPanel()
         observer = NotificationCenter.default.addObserver(
             forName: .sacredStateChanged, object: nil, queue: .main) { [weak self] _ in
             self?.rebuild()
         }
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+    }
+
+    private func buildPanel() {
+        let c = NSView()
+        c.translatesAutoresizingMaskIntoConstraints = false
+        c.wantsLayer = true
+        c.layer?.backgroundColor = panelBg.cgColor
+        c.layer?.cornerRadius = 12
+        c.layer?.borderWidth = 1
+        c.layer?.borderColor = inputLine.cgColor
+        c.layer?.masksToBounds = true
+        container = c
+
+        let header = makeHeader()
+        let tabs = makeTabBar()
+        paneContainer.translatesAutoresizingMaskIntoConstraints = false
+
+        c.addSubview(header)
+        c.addSubview(tabs)
+        c.addSubview(paneContainer)
+
+        // Intrinsic panel size (mock 680 wide; preferred ~640 tall, capped on show).
+        let prefH = c.heightAnchor.constraint(equalToConstant: 640)
+        prefH.priority = .defaultHigh
+
+        NSLayoutConstraint.activate([
+            c.widthAnchor.constraint(equalToConstant: 680),
+            prefH,
+
+            header.topAnchor.constraint(equalTo: c.topAnchor),
+            header.leadingAnchor.constraint(equalTo: c.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: c.trailingAnchor),
+            header.heightAnchor.constraint(equalToConstant: 44),
+
+            tabs.topAnchor.constraint(equalTo: header.bottomAnchor),
+            tabs.leadingAnchor.constraint(equalTo: c.leadingAnchor),
+            tabs.trailingAnchor.constraint(equalTo: c.trailingAnchor),
+            tabs.heightAnchor.constraint(equalToConstant: 40),
+
+            paneContainer.topAnchor.constraint(equalTo: tabs.bottomAnchor),
+            paneContainer.leadingAnchor.constraint(equalTo: c.leadingAnchor),
+            paneContainer.trailingAnchor.constraint(equalTo: c.trailingAnchor),
+            paneContainer.bottomAnchor.constraint(equalTo: c.bottomAnchor),
+        ])
+    }
 
     // MARK: - Public
 
+    /// Present as an in-app centered overlay + dimmed scrim (mock `.scrim` +
+    /// `.settings-panel`), hosted in the main window's content view.
     func show(tab: Tab) {
         currentTab = tab
         styleTabs()
         rebuild()
-        showWindow(nil)
-        window?.center()
-        window?.makeKeyAndOrderFront(nil)
+
+        guard let parent = (NSApp.windows.first { $0.contentViewController is RootViewController }) ?? NSApp.mainWindow,
+              let parentContent = parent.contentView else { return }
+
+        teardown()   // re-show: drop any prior overlay first
+
+        // Dim scrim over the whole window.
+        let s = NSView(frame: parentContent.bounds)
+        s.autoresizingMask = [.width, .height]
+        s.wantsLayer = true
+        s.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.35).cgColor
+        parentContent.addSubview(s)
+        s.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(scrimClicked)))
+        scrim = s
+
+        // Centered panel; height capped to the window (mock max-height min(720,88vh)).
+        parentContent.addSubview(container)
+        NSLayoutConstraint.activate([
+            container.centerXAnchor.constraint(equalTo: parentContent.centerXAnchor),
+            container.centerYAnchor.constraint(equalTo: parentContent.centerYAnchor),
+            container.heightAnchor.constraint(lessThanOrEqualTo: parentContent.heightAnchor, multiplier: 0.9),
+        ])
+
+        parent.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+            if e.keyCode == 53 { self?.closeSettings(); return nil }   // Esc
+            return e
+        }
     }
 
-    @objc fileprivate func closeSettings() { window?.close() }
+    @objc private func scrimClicked() { closeSettings() }
+    @objc fileprivate func closeSettings() { teardown() }
+
+    private func teardown() {
+        scrim?.removeFromSuperview()
+        scrim = nil
+        if container?.superview != nil { container.removeFromSuperview() }
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor); self.keyMonitor = nil }
+    }
 
     // MARK: - Header + tabs
 
@@ -987,14 +1029,6 @@ final class SettingsWindowController: NSWindowController {
         l.isSelectable = false
         return l
     }
-}
-
-/// A borderless panel window that can still take focus (for text fields) and
-/// closes on Esc.
-private final class PanelWindow: NSWindow {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-    override func cancelOperation(_ sender: Any?) { close() }
 }
 
 /// A folder-style tab: transparent when inactive; when active it fills with the

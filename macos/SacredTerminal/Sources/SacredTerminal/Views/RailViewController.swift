@@ -14,6 +14,7 @@ final class RailViewController: NSViewController {
     private let documentView = FlippedView()
 
     private var observer: NSObjectProtocol?
+    private var topBar: NSView?
 
     // MARK: - Lifecycle
 
@@ -21,10 +22,11 @@ final class RailViewController: NSViewController {
         let root = NSView()
         root.translatesAutoresizingMaskIntoConstraints = false
         root.wantsLayer = true
-        root.layer?.backgroundColor = Theme.railBg.cgColor
+        root.layer?.backgroundColor = Theme.railBgLive.cgColor
         view = root
 
         let topBar = makeTopBar()
+        self.topBar = topBar
         root.addSubview(topBar)
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -89,7 +91,7 @@ final class RailViewController: NSViewController {
         let bar = NSView()
         bar.translatesAutoresizingMaskIntoConstraints = false
         bar.wantsLayer = true
-        bar.layer?.backgroundColor = Theme.railBg.cgColor
+        bar.layer?.backgroundColor = Theme.railBgLive.cgColor
 
         let gear = railIconButton(symbol: "gearshape", fallback: "⚙", tooltip: "Settings",
                                   target: self, action: #selector(openSettings))
@@ -116,6 +118,10 @@ final class RailViewController: NSViewController {
     // MARK: - Tree
 
     private func rebuild() {
+        // Re-apply the live (Settings → Appearance) rail colors so the pickers take.
+        view.layer?.backgroundColor = Theme.railBgLive.cgColor
+        topBar?.layer?.backgroundColor = Theme.railBgLive.cgColor
+
         treeStack.arrangedSubviews.forEach {
             treeStack.removeArrangedSubview($0)
             $0.removeFromSuperview()
@@ -631,47 +637,6 @@ private class HoverView: NSView {
 
     /// Override to react to hover state.
     func hoverChanged(_ hovering: Bool) {}
-}
-
-/// A colored status dot that softly pulses (opacity) when `pulse` is true.
-private final class DotView: NSView {
-    var color: NSColor = Theme.textFaint { didSet { needsDisplay = true } }
-    var pulse: Bool = false { didSet { updatePulse() } }
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        translatesAutoresizingMaskIntoConstraints = false
-        wantsLayer = true
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override var wantsUpdateLayer: Bool { true }
-
-    override func updateLayer() {
-        guard let layer else { return }
-        layer.cornerRadius = bounds.width / 2
-        layer.backgroundColor = color.cgColor
-    }
-
-    override func layout() {
-        super.layout()
-        layer?.cornerRadius = bounds.width / 2
-    }
-
-    private func updatePulse() {
-        guard let layer else { return }
-        layer.removeAnimation(forKey: "pulse")
-        guard pulse else { layer.opacity = 1; return }
-        let anim = CABasicAnimation(keyPath: "opacity")
-        anim.fromValue = 1.0
-        anim.toValue = 0.35
-        anim.duration = 0.9
-        anim.autoreverses = true
-        anim.repeatCount = .infinity
-        anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        layer.add(anim, forKey: "pulse")
-    }
 }
 
 /// A borderless icon button using an SF Symbol when available, else a glyph.

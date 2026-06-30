@@ -104,7 +104,7 @@ final class WorkspaceViewController: NSViewController {
             tabBar.topAnchor.constraint(equalTo: view.topAnchor),
             tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tabBar.heightAnchor.constraint(equalToConstant: 36),
+            tabBar.heightAnchor.constraint(equalToConstant: 32),
 
             // The Ghostty surface is the input, so the terminal fills to the bottom.
             terminalArea.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
@@ -160,7 +160,7 @@ final class WorkspaceViewController: NSViewController {
 
         let hairline = NSView()
         hairline.wantsLayer = true
-        hairline.layer?.backgroundColor = Theme.border.cgColor
+        hairline.layer?.backgroundColor = Theme.hairlineSoft.cgColor   // mock #222228
         hairline.translatesAutoresizingMaskIntoConstraints = false
         bar.addSubview(hairline)
 
@@ -205,58 +205,29 @@ final class WorkspaceViewController: NSViewController {
 
             tabsStack.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 8),
             tabsStack.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            tabsStack.trailingAnchor.constraint(lessThanOrEqualTo: actions.leadingAnchor, constant: -8),
+            tabsStack.trailingAnchor.constraint(lessThanOrEqualTo: actions.leadingAnchor, constant: -4),
 
-            actions.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -8),
+            actions.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -6),
             actions.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
         ])
 
         return bar
     }
 
-    /// A small "● Working" status pill for the tab-bar header (mirrors §8 status).
-    private func makeStatusPill(session: Session) -> NSView {
-        let meta = statusMeta(session.status)
-        let pill = NSView()
-        pill.translatesAutoresizingMaskIntoConstraints = false
-        pill.wantsLayer = true
-        pill.layer?.cornerRadius = 9
-        pill.layer?.backgroundColor = meta.color.withAlphaComponent(0.14).cgColor
-        pill.layer?.borderWidth = 1
-        pill.layer?.borderColor = meta.color.withAlphaComponent(0.45).cgColor
-
-        let dot = NSView()
-        dot.translatesAutoresizingMaskIntoConstraints = false
-        dot.wantsLayer = true
-        dot.layer?.cornerRadius = 3.5
-        dot.layer?.backgroundColor = meta.color.cgColor
-
-        let label = NSTextField(labelWithString: meta.label)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = Theme.monoSmall
-        label.textColor = Theme.text
-
-        pill.addSubview(dot)
-        pill.addSubview(label)
-        NSLayoutConstraint.activate([
-            pill.heightAnchor.constraint(equalToConstant: 18),
-            dot.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 8),
-            dot.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
-            dot.widthAnchor.constraint(equalToConstant: 7),
-            dot.heightAnchor.constraint(equalToConstant: 7),
-            label.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 6),
-            label.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -9),
-            label.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
-        ])
-        return pill
-    }
-
     private func makeTab(session: Session, pane: Pane) -> NSView {
         let isActive = pane.id == session.activePaneID
         let tab = TabButton(sessionID: session.id, paneID: pane.id)
+        tab.isActiveTab = isActive
         tab.wantsLayer = true
         tab.layer?.cornerRadius = 6
-        tab.layer?.backgroundColor = (isActive ? Theme.hover : NSColor.clear).cgColor
+        // mock .term-tab.active { background: rgba(255,255,255,.06); border: 1px #2a2a30 }
+        if isActive {
+            tab.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
+            tab.layer?.borderWidth = 1
+            tab.layer?.borderColor = Theme.pickerLine.cgColor
+        } else {
+            tab.layer?.backgroundColor = NSColor.clear.cgColor
+        }
         tab.target = self
         tab.action = #selector(tabClicked(_:))
         tab.translatesAutoresizingMaskIntoConstraints = false
@@ -290,7 +261,7 @@ final class WorkspaceViewController: NSViewController {
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
             title.centerYAnchor.constraint(equalTo: tab.centerYAnchor),
 
-            tab.heightAnchor.constraint(equalToConstant: 26),
+            tab.heightAnchor.constraint(equalToConstant: 24),
             tab.widthAnchor.constraint(greaterThanOrEqualToConstant: 90),
             tab.widthAnchor.constraint(lessThanOrEqualToConstant: 220),
         ])
@@ -406,7 +377,7 @@ final class WorkspaceViewController: NSViewController {
 
         if session.browserOpen {
             let browserView = browserPanelView(for: session)
-            let split = NSSplitView()
+            let split = SeamSplitView()
             split.isVertical = true            // side-by-side: terminal | browser
             split.dividerStyle = .thin
             split.translatesAutoresizingMaskIntoConstraints = false
@@ -414,6 +385,11 @@ final class WorkspaceViewController: NSViewController {
             split.addArrangedSubview(browserView)
             container.addSubview(split)
             pin(split, to: container)
+            // Mock: term-workspace ~48% / browser ~52% — a breakable ratio constraint
+            // (NSSplitView's setPosition timing is unreliable for the initial layout).
+            let ratio = panesView.widthAnchor.constraint(equalTo: split.widthAnchor, multiplier: 0.48)
+            ratio.priority = NSLayoutConstraint.Priority(700)
+            ratio.isActive = true
         } else {
             tearDownBrowser()
             container.addSubview(panesView)
@@ -423,25 +399,42 @@ final class WorkspaceViewController: NSViewController {
         return container
     }
 
-    /// Build the pane layout: a 2-pane split, or just the active pane.
+    /// Build the pane layout: a 2-pane split (each cell ringed when focused), or
+    /// just the active pane.
     private func buildPanes(project: Project, session: Session) -> NSView {
         if session.splitLayout != .none, session.panes.count >= 2 {
             let first = host(for: session.panes[0], project: project, session: session)
             let second = host(for: session.panes[1], project: project, session: session)
 
-            let split = NSSplitView()
+            let split = SeamSplitView()
             // horizontal layout => side-by-side (vertical divider);
             // vertical layout => stacked (horizontal divider).
             split.isVertical = (session.splitLayout == .horizontal)
             split.dividerStyle = .thin
             split.translatesAutoresizingMaskIntoConstraints = false
-            split.addArrangedSubview(first)
-            split.addArrangedSubview(second)
+            split.addArrangedSubview(focusCell(first, focused: session.panes[0].id == session.activePaneID))
+            split.addArrangedSubview(focusCell(second, focused: session.panes[1].id == session.activePaneID))
             return split
         } else {
             let active = session.activePane
             return host(for: active, project: project, session: session)
         }
+    }
+
+    /// Wrap a pane host in a cell that shows the mock's amber inset focus ring when
+    /// it's the active pane (mock `.term-cell.focused`).
+    private func focusCell(_ host: NSView, focused: Bool) -> NSView {
+        let cell = NSView()
+        cell.translatesAutoresizingMaskIntoConstraints = false
+        cell.wantsLayer = true
+        if focused {
+            cell.layer?.borderWidth = 1
+            cell.layer?.borderColor = Theme.sessionActive.withAlphaComponent(0.35).cgColor
+        }
+        host.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(host)
+        pin(host, to: cell)
+        return cell
     }
 
     /// Fetch (or lazily create) the cached `PaneHost` for a pane.
@@ -513,10 +506,13 @@ final class WorkspaceViewController: NSViewController {
 
 // MARK: - Lightweight controls carrying their pane identity
 
-/// A clickable tab that remembers which session/pane it represents.
+/// A clickable tab that remembers which session/pane it represents. Inactive tabs
+/// take the mock's `.term-tab:hover` background; the active tab keeps its styling.
 private final class TabButton: NSButton {
     let sessionID: String
     let paneID: String
+    var isActiveTab = false
+    private var tracking: NSTrackingArea?
     init(sessionID: String, paneID: String) {
         self.sessionID = sessionID
         self.paneID = paneID
@@ -526,6 +522,25 @@ private final class TabButton: NSButton {
         setButtonType(.momentaryChange)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let a = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect, .assumeInside], owner: self)
+        addTrackingArea(a); tracking = a
+    }
+    override func mouseEntered(with event: NSEvent) {
+        if !isActiveTab { layer?.backgroundColor = NSColor.white.withAlphaComponent(0.04).cgColor }
+    }
+    override func mouseExited(with event: NSEvent) {
+        if !isActiveTab { layer?.backgroundColor = NSColor.clear.cgColor }
+    }
+}
+
+/// An NSSplitView whose divider matches the mock's faint rgba(255,255,255,.06) seam.
+private final class SeamSplitView: NSSplitView {
+    override var dividerColor: NSColor { NSColor.white.withAlphaComponent(0.06) }
+    override var dividerThickness: CGFloat { 1 }
 }
 
 /// The per-tab close affordance.

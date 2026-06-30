@@ -158,7 +158,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let dotRect = NSRect(x: rect.maxX - dotR * 2 - 0.5,
                                  y: rect.maxY - dotR * 2 - 0.5,
                                  width: dotR * 2, height: dotR * 2)
-            statusMeta(.waiting).color.setFill()
+            Theme.hex("#2f6fed").setFill()   // mock --notify badge
             NSBezierPath(ovalIn: dotRect).fill()
             return true
         }
@@ -182,15 +182,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             empty.isEnabled = false
             menu.addItem(empty)
         } else {
-            // Sessions that need you (.waiting) come first, then a separator, then
-            // .working and everything else — so the attention-grabbers sit at the top.
+            // Mock order: working sessions first, then a separator, then the
+            // "needs your input" (.waiting) rows at the bottom.
             var insertedNeedsYouSeparator = false
-            var sawWaiting = false
-
             for (project, session) in sessions {
-                if session.status == .waiting { sawWaiting = true }
-                // Place a separator after the .waiting block, above the rest.
-                if sawWaiting, session.status != .waiting, !insertedNeedsYouSeparator {
+                if session.status == .waiting, !insertedNeedsYouSeparator {
                     menu.addItem(.separator())
                     insertedNeedsYouSeparator = true
                 }
@@ -205,15 +201,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(quit)
     }
 
-    /// Sort: .waiting first, then .working, then .done, then .idle; stable within a
+    /// Sort (mock order): .working first, then .done, .idle, and .waiting LAST so the
+    /// "needs your input" rows sit at the bottom below a separator. Stable within a
     /// group by their natural order in the workspace tree.
     private func orderedSessions() -> [(project: Project, session: Session)] {
         func rank(_ s: Status) -> Int {
             switch s {
-            case .waiting: return 0
-            case .working: return 1
-            case .done:    return 2
-            case .idle:    return 3
+            case .working: return 0
+            case .done:    return 1
+            case .idle:    return 2
+            case .waiting: return 3
             }
         }
         return AppState.shared.allSessions
