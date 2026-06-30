@@ -122,33 +122,94 @@ final class WorkspaceViewController: NSViewController {
     // MARK: - Empty state
 
     private func buildEmptyState() {
+        let hasProjects = !AppState.shared.projects.isEmpty
+
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .centerX
-        stack.spacing = 14
+        stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let label = NSTextField(labelWithString: "No session open")
-        label.font = NSFont.systemFont(ofSize: 15, weight: .medium)
-        label.textColor = Theme.textDim
+        // Ghost art — the Claude mark, faint (mock `.empty .ghost-art`).
+        let ghost = NSImageView()
+        ghost.translatesAutoresizingMaskIntoConstraints = false
+        if let img = Theme.agentImage(.claude) {
+            img.size = NSSize(width: 30, height: 30)
+            ghost.image = img
+        }
+        ghost.imageScaling = .scaleProportionallyUpOrDown
+        ghost.alphaValue = 0.35
 
-        let button = NSButton(title: "New session", target: self, action: #selector(openPicker))
-        button.bezelStyle = .rounded
-        button.contentTintColor = Theme.accent
+        let title = NSTextField(labelWithString: hasProjects ? "No session open" : "No projects yet")
+        title.font = NSFont.systemFont(ofSize: 15, weight: .medium)
+        title.textColor = Theme.textDim
+        title.alignment = .center
 
-        stack.addArrangedSubview(label)
-        stack.addArrangedSubview(button)
+        let hint = NSTextField(labelWithString: hasProjects
+            ? "Hover a project and pick an agent, or press ⌘N."
+            : "Add a project folder to start running agents.")
+        hint.font = NSFont.systemFont(ofSize: 12)
+        hint.textColor = Theme.textFaint
+        hint.alignment = .center
+
+        let pill = makeAccentPill(hasProjects ? "+ New session" : "+ Add project")
+
+        stack.addArrangedSubview(ghost)
+        stack.addArrangedSubview(title)
+        stack.addArrangedSubview(hint)
+        stack.setCustomSpacing(16, after: hint)
+        stack.addArrangedSubview(pill)
         view.addSubview(stack)
 
         NSLayoutConstraint.activate([
+            ghost.widthAnchor.constraint(equalToConstant: 30),
+            ghost.heightAnchor.constraint(equalToConstant: 30),
             stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),
         ])
     }
 
+    /// A flat accent pill button (mock `.empty .pill`).
+    private func makeAccentPill(_ title: String) -> NSButton {
+        let b = NSButton(title: title, target: self, action: #selector(openPicker))
+        b.translatesAutoresizingMaskIntoConstraints = false
+        b.isBordered = false
+        b.bezelStyle = .regularSquare
+        b.wantsLayer = true
+        b.layer?.backgroundColor = Theme.accent.cgColor
+        b.layer?.cornerRadius = 8
+        b.attributedTitle = NSAttributedString(string: title, attributes: [
+            .foregroundColor: NSColor.white,
+            .font: NSFont.systemFont(ofSize: 12.5, weight: .semibold)])
+        b.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        b.widthAnchor.constraint(greaterThanOrEqualToConstant: 132).isActive = true
+        return b
+    }
+
+    /// New-session affordance. With a project present, open the agent picker; with
+    /// none, let the user choose a real folder first, then pick an agent for it.
     @objc private func openPicker() {
-        guard let project = AppState.shared.projects.first else { return }
-        AgentPickerController.present(projectID: project.id, relativeTo: view)
+        if let project = AppState.shared.activeContext?.project ?? AppState.shared.projects.first {
+            AgentPickerController.present(projectID: project.id, relativeTo: view)
+        } else {
+            importFolderThenPick()
+        }
+    }
+
+    private func importFolderThenPick() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Add Project"
+        panel.message = "Choose a project folder for your agents"
+        panel.begin { [weak self] resp in
+            guard resp == .OK, let url = panel.url, let self else { return }
+            AppState.shared.addProject(name: url.lastPathComponent, path: url.path)
+            if let p = AppState.shared.projects.last {
+                AgentPickerController.present(projectID: p.id, relativeTo: self.view)
+            }
+        }
     }
 
     // MARK: - Tab bar (spec §6)
