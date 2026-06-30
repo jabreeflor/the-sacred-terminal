@@ -46,12 +46,20 @@ jobs:
 
       - name: Determine Zig version
         id: zig
+        # Ghostty pins its Zig requirement in .zig-version (older) or
+        # build.zig.zon's `minimum_zig_version` (current). Read whichever exists.
         run: |
+          ver=""
           if [ -f vendor/ghostty/.zig-version ]; then
-            echo "version=$(cat vendor/ghostty/.zig-version)" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=0.14.0" >> "$GITHUB_OUTPUT"
+            ver="$(tr -d '[:space:]' < vendor/ghostty/.zig-version)"
           fi
+          if [ -z "$ver" ] && [ -f vendor/ghostty/build.zig.zon ]; then
+            ver="$(grep -oE 'minimum_zig_version[[:space:]]*=[[:space:]]*"[^"]+"' vendor/ghostty/build.zig.zon \
+                   | grep -oE '"[^"]+"' | tr -d '"' | head -1)"
+          fi
+          [ -z "$ver" ] && ver="0.15.1"
+          echo "Using Zig $ver"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
 
       - name: Setup Zig ${{ steps.zig.outputs.version }}
         uses: mlugg/setup-zig@v2
