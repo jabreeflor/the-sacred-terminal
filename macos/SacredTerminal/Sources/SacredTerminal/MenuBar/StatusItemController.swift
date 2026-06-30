@@ -3,17 +3,33 @@
 //
 //  An NSStatusItem whose button glyph reflects the aggregate state of every
 //  session: it spins while ANY session is .working and wears an attention dot
-//  while ANY session is .waiting. Clicking it drops a roster — one item per
-//  session, with the ones that need you (.waiting) pulled to the top above a
-//  separator, then .working, then the rest. Selecting a row posts
+//  while ANY session is .waiting. Clicking it drops a custom glass roster
+//  (NSPopover hosting `MenuBarRosterViewController`, matching the mock at
+//  docs/mock-design/menu-bar.html) — one row per session, .working first, then a
+//  separator, then the ones that need you (.waiting). Selecting a row posts
 //  `.sacredFocusSession` (snap-back) so the main window re-focuses that session.
 
 import AppKit
 
-final class StatusItemController: NSObject, NSMenuDelegate {
+final class StatusItemController: NSObject, NSPopoverDelegate {
 
     private let statusItem: NSStatusItem
     private var observer: NSObjectProtocol?
+
+    /// The custom glass dropdown. Content is rebuilt fresh on each open so it always
+    /// reflects current state. `.transient` dismisses on any outside interaction.
+    private lazy var popover: NSPopover = {
+        let p = NSPopover()
+        p.behavior = .transient
+        p.animates = true
+        p.appearance = NSAppearance(named: .darkAqua)
+        p.delegate = self
+        return p
+    }()
+
+    /// Set briefly when the popover closes so the same click that dismissed it (when
+    /// it lands on the status button) doesn't immediately reopen it.
+    private var popoverJustClosed = false
 
     /// Drives the spin animation while any session is .working.
     private var spinTimer: Timer?
@@ -34,11 +50,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             button.image = baseGlyph()
             button.imagePosition = .imageOnly
             button.toolTip = "The Sacred Terminal"
+            button.target = self
+            button.action = #selector(togglePopover)
         }
-
-        let menu = NSMenu()
-        menu.delegate = self
-        statusItem.menu = menu
 
         observer = NotificationCenter.default.addObserver(
             forName: .sacredStateChanged, object: nil, queue: .main
@@ -166,39 +180,37 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return badged
     }
 
-    // MARK: - Menu (rebuilt each time it opens)
+    // MARK: - Popover (rebuilt each time it opens)
 
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        rebuildMenu(menu)
+    @objc private func togglePopover() {
+        guard let button = statusItem.button else { return }
+        if popover.isShown { popover.performClose(nil); return }
+        if popoverJustClosed { return }   // swallow the click that just dismissed it
+
+        popover.contentViewController = MenuBarRosterViewController(
+            sessions: orderedSessions(),
+            activeID: AppState.shared.activeSessionID,
+            onPick: { [weak self] id in
+                self?.popover.performClose(nil)
+                NotificationCenter.default.post(name: .sacredFocusSession, object: id)
+            },
+            onQuit: { NSApp.terminate(nil) })
+
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        // Make the popover window key so Esc / arrow keys reach it.
+        popover.contentViewController?.view.window?.makeKey()
     }
 
-    private func rebuildMenu(_ menu: NSMenu) {
-        menu.removeAllItems()
+    // NSPopoverDelegate — keep the menu-bar button looking "pressed" while open, and
+    // briefly guard against the dismiss-click immediately reopening it.
+    func popoverWillShow(_ notification: Notification) {
+        statusItem.button?.highlight(true)
+    }
 
-        let sessions = orderedSessions()
-
-        if sessions.isEmpty {
-            let empty = NSMenuItem(title: "No sessions", action: nil, keyEquivalent: "")
-            empty.isEnabled = false
-            menu.addItem(empty)
-        } else {
-            // Mock order: working sessions first, then a separator, then the
-            // "needs your input" (.waiting) rows at the bottom.
-            var insertedNeedsYouSeparator = false
-            for (project, session) in sessions {
-                if session.status == .waiting, !insertedNeedsYouSeparator {
-                    menu.addItem(.separator())
-                    insertedNeedsYouSeparator = true
-                }
-                menu.addItem(makeSessionItem(project: project, session: session))
-            }
-        }
-
-        menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit The Sacred Terminal",
-                              action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        quit.target = NSApp
-        menu.addItem(quit)
+    func popoverDidClose(_ notification: Notification) {
+        statusItem.button?.highlight(false)
+        popoverJustClosed = true
+        DispatchQueue.main.async { [weak self] in self?.popoverJustClosed = false }
     }
 
     /// Sort (mock order): .working first, then .done, .idle, and .waiting LAST so the
@@ -221,51 +233,5 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 return a.offset < b.offset
             }
             .map { $0.element }
-    }
-
-    private func makeSessionItem(project: Project, session: Session) -> NSMenuItem {
-        let meta = statusMeta(session.status)
-        let task = session.task.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = task.isEmpty ? Agents.def(session.agent).name : task
-
-        let item = NSMenuItem(title: title, action: #selector(focusSession(_:)), keyEquivalent: "")
-        item.target = self
-        item.representedObject = session.id
-        item.image = statusDot(color: meta.color)
-        item.state = (session.id == AppState.shared.activeSessionID) ? .on : .off
-
-        // Subtitle line: project name + status label, dimmed.
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11),
-            .foregroundColor: NSColor.secondaryLabelColor,
-        ]
-        item.attributedTitle = {
-            let s = NSMutableAttributedString(
-                string: title + "\n",
-                attributes: [.font: NSFont.menuFont(ofSize: 0)])
-            s.append(NSAttributedString(string: "\(project.name) · \(meta.label)", attributes: attrs))
-            return s
-        }()
-
-        return item
-    }
-
-    /// A small colored status dot used as each roster row's leading image.
-    private func statusDot(color: NSColor) -> NSImage {
-        let size = NSSize(width: 9, height: 9)
-        let image = NSImage(size: size, flipped: false) { rect in
-            color.setFill()
-            NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5)).fill()
-            return true
-        }
-        image.isTemplate = false
-        return image
-    }
-
-    // MARK: - Actions
-
-    @objc private func focusSession(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        NotificationCenter.default.post(name: .sacredFocusSession, object: id)
     }
 }

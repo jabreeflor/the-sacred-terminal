@@ -13,14 +13,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.applicationIconImage = icon
         }
 
-        // Touch the Ghostty app early so libghostty is initialized once.
-        _ = GhosttyApp.shared
-
         buildMenu()
 
+        // Build + show the main window FIRST so its chrome (titlebar, rail, workspace)
+        // paints immediately at the launch size. libghostty initializes lazily when the
+        // first terminal surface enters the window — and that surface spin-up is itself
+        // deferred a runloop tick (see SurfaceView) — so heavy GPU/PTY work no longer
+        // blocks the window from appearing. (Previously `_ = GhosttyApp.shared` ran here,
+        // before the window existed, leaving a Dock icon and no window on a cold launch.)
+        // `showWindow` also kicks off a short, bounded series of launch-frame
+        // corrections (see MainWindowController.ensureLaunchFrame) that defend the
+        // Finder/`open` path, where LaunchServices can order the window in at 0×0
+        // before its content size resolves.
         let main = MainWindowController()
-        main.showWindow(nil)
         mainWindow = main
+        main.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
 
         // The "always running" menu-bar item — surfaces every session's pulse (§11).
         statusItem = StatusItemController()
@@ -28,8 +36,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Unix-socket control API + CLI, à la cmux's TerminalController.
         socket = SocketServer()
         try? socket?.start()
-
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

@@ -36,12 +36,18 @@ final class SurfaceView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil, ghostty == nil else { return }
-        // Create the surface now that we have a window/backing scale; libghostty
-        // spawns the PTY (the agent CLI or shell) and starts rendering.
-        ghostty = GhosttySurface(view: self, argv: argv, directory: directory)
-        ghostty?.setContentScale(window?.backingScaleFactor ?? 2.0)
-        updateSurfaceSize()
-        startDisplayLink()
+        // Defer the (heavy) libghostty surface + PTY + Metal spin-up by one runloop
+        // tick so the window's chrome paints first — otherwise a cold launch blocks on
+        // GPU/PTY init before anything is visible. Re-check we're still in a window and
+        // haven't already created the surface (viewDidMoveToWindow can fire repeatedly).
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.window != nil, self.ghostty == nil else { return }
+            // libghostty spawns the PTY (the agent CLI or shell) and starts rendering.
+            self.ghostty = GhosttySurface(view: self, argv: self.argv, directory: self.directory)
+            self.ghostty?.setContentScale(self.window?.backingScaleFactor ?? 2.0)
+            self.updateSurfaceSize()
+            self.startDisplayLink()
+        }
     }
 
     override func removeFromSuperview() {

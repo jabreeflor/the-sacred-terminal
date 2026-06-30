@@ -39,15 +39,33 @@ final class MainWindowController: NSWindowController {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    // Re-assert the launch frame once after show, in case anything nudged it.
-    private var didSizeOnce = false
+    /// The intended launch size — matches the design mock (docs/mock-design/index.html).
+    private static let launchSize = NSSize(width: 1240, height: 820)
+    /// Bounded number of launch-frame correction passes (see `ensureLaunchFrame`).
+    private var launchFramePassesLeft = 6
+
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
-        guard !didSizeOnce else { return }
-        didSizeOnce = true
-        guard let window, window.frame.width < 1200 else { return }
-        window.setFrame(NSRect(x: 0, y: 0, width: 1240, height: 820), display: true)
-        window.center()
+        ensureLaunchFrame()
+    }
+
+    /// Defends the launch size against the Finder/`open` path. With a `contentViewController`
+    /// the window derives its size from the content's Auto Layout fitting size, and on
+    /// that launch path LaunchServices can order the window in *before* that size
+    /// resolves — so it briefly comes up 0×0 (the documented symptom). A single
+    /// synchronous re-assert can be re-clamped by a later layout pass, so instead we run
+    /// a short, bounded series of passes over the first few runloop ticks: each pass
+    /// snaps the frame back to the design size if it's degenerate, then the passes are
+    /// exhausted. Because they all run during the first ~100ms of launch (long before
+    /// the user can resize), this never fights a legitimate resize on reopen.
+    func ensureLaunchFrame() {
+        guard let window, launchFramePassesLeft > 0 else { return }
+        launchFramePassesLeft -= 1
+        if window.frame.width < 1200 || window.frame.height < 600 {
+            window.setFrame(NSRect(origin: .zero, size: Self.launchSize), display: true)
+            window.center()
+        }
+        DispatchQueue.main.async { [weak self] in self?.ensureLaunchFrame() }
     }
 
     @objc private func focusSession(_ note: Notification) {
