@@ -1,0 +1,6 @@
+.build/
+vendor/ghostty/
+vendor/GhosttyKit.xcframework/
+*.xcodeproj
+*.xcworkspace
+.DS_Store
