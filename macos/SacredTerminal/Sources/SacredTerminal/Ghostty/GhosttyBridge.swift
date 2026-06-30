@@ -27,11 +27,23 @@ final class GhosttyApp {
         }
 
         // 2. Load configuration. Default files include ~/.config/ghostty/config,
-        //    so themes/fonts/colors come straight from the user's Ghostty setup
-        //    (spec §9; same as cmux).
-        config = ghostty_config_new()
-        ghostty_config_load_default_files(config)
-        ghostty_config_finalize(config)
+        //    so fonts/keybinds/etc. come from the user's Ghostty setup (spec §9).
+        // Use a local handle so the withCString closures don't capture `self`
+        // (the stored `config`/`app` members aren't initialized yet).
+        let cfg: ghostty_config_t = ghostty_config_new()
+        ghostty_config_load_default_files(cfg)
+        // Then pin the app's design theme — Catppuccin Frappé (spec §9 / the mock) —
+        // on top, so every surface matches the design out of the box. Loaded after
+        // the user's files so it wins for the theme; `path` is just a diagnostics
+        // label and must be NUL-terminated (withCString provides that).
+        let overrides = "theme = catppuccin-frappe"
+        overrides.withCString { contents in
+            "sacred-terminal-defaults".withCString { path in
+                ghostty_config_load_string(cfg, contents, UInt(overrides.utf8.count), path)
+            }
+        }
+        ghostty_config_finalize(cfg)
+        config = cfg
 
         // 3. Runtime config wires libghostty's callbacks back into AppKit.
         var runtime = ghostty_runtime_config_s()

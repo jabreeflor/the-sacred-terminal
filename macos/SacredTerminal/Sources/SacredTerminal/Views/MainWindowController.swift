@@ -5,9 +5,7 @@ import AppKit
 final class MainWindowController: NSWindowController {
     private let rail = RailViewController()
     private let workspace = WorkspaceViewController()
-    private let titlebar = TitlebarController()
-    private var splitController: NSSplitViewController!
-    private var sidebarItem: NSSplitViewItem!
+    private var rootVC: RootViewController!
 
     init() {
         let window = NSWindow(
@@ -17,43 +15,39 @@ final class MainWindowController: NSWindowController {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.title = "The Sacred Terminal"
-        window.center()
-        window.setFrameAutosaveName("SacredMainWindow")
+        window.minSize = NSSize(width: 900, height: 640)
+        // Don't let macOS restore a stale frame over our intended launch size.
+        window.isRestorable = false
         super.init(window: window)
 
-        splitController = NSSplitViewController()
+        // Root hosts the 38px titlebar + the rail/workspace split (RootViewController,
+        // Auto Layout with a breakable preferred 1240 width). The window adopts the
+        // content's fitting size, so set the launch size AFTER assigning the content
+        // VC (which resets size limits from the VC's constraints).
+        rootVC = RootViewController(rail: rail, workspace: workspace)
+        window.contentViewController = rootVC
+        window.setContentSize(NSSize(width: 1240, height: 820))
+        window.center()
 
-        sidebarItem = NSSplitViewItem(sidebarWithViewController: rail)
-        sidebarItem.minimumThickness = 200
-        sidebarItem.maximumThickness = 320
-        sidebarItem.canCollapse = true
-
-        let mainItem = NSSplitViewItem(viewController: workspace)
-        splitController.addSplitViewItem(sidebarItem)
-        splitController.addSplitViewItem(mainItem)
-
-        window.contentViewController = splitController
-
-        // Titlebar accessory holds the project › session crumb + browser toggle.
-        let accessory = NSTitlebarAccessoryViewController()
-        accessory.layoutAttribute = .right
-        accessory.view = titlebar.view
-        window.addTitlebarAccessoryViewController(accessory)
-
-        NotificationCenter.default.addObserver(self, selector: #selector(stateChanged),
-                                               name: .sacredStateChanged, object: nil)
+        // The project › task crumb lives in RootViewController's own 38px titlebar,
+        // and RootViewController syncs rail collapse — so the window controller only
+        // listens for menu-bar "focus this session" requests.
         NotificationCenter.default.addObserver(self, selector: #selector(focusSession(_:)),
                                                name: .sacredFocusSession, object: nil)
         installShortcuts()
-        syncSidebar()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    @objc private func stateChanged() { syncSidebar() }
-
-    private func syncSidebar() {
-        sidebarItem.animator().isCollapsed = !AppState.shared.sidebarOpen
+    // Re-assert the launch frame once after show, in case anything nudged it.
+    private var didSizeOnce = false
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        guard !didSizeOnce else { return }
+        didSizeOnce = true
+        guard let window, window.frame.width < 1200 else { return }
+        window.setFrame(NSRect(x: 0, y: 0, width: 1240, height: 820), display: true)
+        window.center()
     }
 
     @objc private func focusSession(_ note: Notification) {

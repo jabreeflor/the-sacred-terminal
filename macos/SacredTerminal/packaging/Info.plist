@@ -10,6 +10,8 @@
     <string>com.sacred.terminal</string>
     <key>CFBundleExecutable</key>
     <string>SacredTerminal</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

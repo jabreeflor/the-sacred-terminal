@@ -1,43 +1,71 @@
 import AppKit
 
-/// The "pre-open a session with…" popover (spec §6). Anchored to a project's
-/// hover-pill "+" button (or any caller-supplied view), it lists the *enabled*
-/// agents in roster order and a "worktree" toggle. Picking an agent creates the
-/// session via `AppState` and dismisses the popover.
+/// The "pre-open a session with…" picker (spec §6), matching the mock `.picker`:
+/// a clean borderless FLOATING PANEL (no system arrow/material) over a dim scrim,
+/// anchored just below the project's hover-pill "+". Picking an agent creates the
+/// session via `AppState` and dismisses.
 final class AgentPickerController: NSViewController {
 
-    /// Held statically so the popover survives past `present(...)` returning.
-    private static var activePopover: NSPopover?
+    /// Held statically so the panel + scrim survive past `present(...)` returning.
+    private static var active: AgentPickerController?
 
     private let projectID: String
-    private let worktreeCheckbox = NSButton()
+    private var worktreeOn = false
+    private weak var panel: PickerPanel?
+    private weak var scrim: NSView?
+    private var checkbox: WorktreeCheckbox?
 
     // MARK: - Presentation
 
-    /// Show the picker anchored to `view`, pre-opening sessions in `projectID`.
     static func present(projectID: String, relativeTo view: NSView) {
-        // Dismiss any picker already on screen.
-        activePopover?.performClose(nil)
+        active?.dismiss()
+        guard let parent = view.window, let parentContent = parent.contentView else { return }
 
         let controller = AgentPickerController(projectID: projectID)
+        controller.loadView()
+        let content = controller.view
+        content.layoutSubtreeIfNeeded()
+        let size = content.fittingSize
 
-        let popover = NSPopover()
-        popover.contentViewController = controller
-        popover.behavior = .transient
-        popover.animates = true
-        // Force the dark chrome appearance regardless of system setting.
-        popover.appearance = NSAppearance(named: .darkAqua)
-        popover.delegate = controller
+        // Dim scrim over the whole window (mock `.scrim`, rgba(0,0,0,.35)).
+        let scrim = NSView(frame: parentContent.bounds)
+        scrim.autoresizingMask = [.width, .height]
+        scrim.wantsLayer = true
+        scrim.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.35).cgColor
+        parentContent.addSubview(scrim)
+        scrim.addGestureRecognizer(NSClickGestureRecognizer(target: controller, action: #selector(scrimClicked)))
+        controller.scrim = scrim
 
-        controller.popover = popover
-        activePopover = popover
+        // Borderless floating panel = the picker.
+        let panel = PickerPanel(contentRect: NSRect(origin: .zero, size: size),
+                                styleMask: [.borderless], backing: .buffered, defer: false)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.level = .floating
+        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.contentView = content
+        panel.onCancel = { [weak controller] in controller?.dismiss() }
 
-        popover.show(relativeTo: view.bounds, of: view, preferredEdge: .maxX)
+        // Anchor below the pill's bottom-left + 6px (mock openPicker: left=r.left,
+        // top=r.bottom+6). Screen coords are bottom-up, so subtract the height.
+        let anchorInWindow = view.convert(view.bounds, to: nil)
+        let anchorOnScreen = parent.convertToScreen(anchorInWindow)
+        var x = anchorOnScreen.minX
+        var y = anchorOnScreen.minY - 6 - size.height
+        if let vf = parent.screen?.visibleFrame {
+            x = min(max(x, vf.minX + 8), vf.maxX - size.width - 8)
+            y = max(y, vf.minY + 8)
+        }
+        panel.setFrameOrigin(NSPoint(x: x, y: y))
+        parent.addChildWindow(panel, ordered: .above)
+        panel.makeKeyAndOrderFront(nil)
+
+        controller.panel = panel
+        active = controller
     }
 
     // MARK: - Init
-
-    private weak var popover: NSPopover?
 
     private init(projectID: String) {
         self.projectID = projectID
@@ -52,40 +80,35 @@ final class AgentPickerController: NSViewController {
         let root = NSView()
         root.translatesAutoresizingMaskIntoConstraints = false
         root.wantsLayer = true
-        root.layer?.backgroundColor = Theme.panelBg.cgColor
+        root.layer?.backgroundColor = Theme.pickerBg.cgColor       // #141417
+        root.layer?.cornerRadius = 11
+        root.layer?.borderWidth = 1
+        root.layer?.borderColor = Theme.pickerLine.cgColor          // #2a2a30
+        root.layer?.masksToBounds = true
         view = root
 
-        // Header.
-        let header = NSTextField(labelWithString: "Pre-open a session with…")
+        // Header — uppercase, letterspaced, faint (mock `.picker .ph`).
+        let header = NSTextField(labelWithString: "")
         header.translatesAutoresizingMaskIntoConstraints = false
-        header.font = Theme.monoSmall
-        header.textColor = Theme.textDim
+        header.attributedStringValue = NSAttributedString(
+            string: "PRE-OPEN A SESSION WITH…",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 10.5, weight: .bold),
+                .foregroundColor: Theme.textFaint,
+                .kern: 0.8,
+            ])
 
-        // Worktree toggle.
-        worktreeCheckbox.translatesAutoresizingMaskIntoConstraints = false
-        worktreeCheckbox.setButtonType(.switch)
-        worktreeCheckbox.title = "Open with worktree"
-        worktreeCheckbox.font = Theme.monoSmall
-        worktreeCheckbox.contentTintColor = Theme.text
-        worktreeCheckbox.state = .off
-        if let cell = worktreeCheckbox.cell as? NSButtonCell {
-            cell.attributedTitle = NSAttributedString(
-                string: "Open with worktree",
-                attributes: [.foregroundColor: Theme.text, .font: Theme.monoSmall])
-        }
+        // Custom worktree checkbox row (mock `.picker-worktree`).
+        let worktree = WorktreeCheckbox { [weak self] on in self?.worktreeOn = on }
+        worktree.translatesAutoresizingMaskIntoConstraints = false
+        self.checkbox = worktree
 
-        // Hairline between the toggle and the agent list.
-        let hairline = NSView()
-        hairline.translatesAutoresizingMaskIntoConstraints = false
-        hairline.wantsLayer = true
-        hairline.layer?.backgroundColor = Theme.border.cgColor
-
-        // Agent list (enabled agents in roster order).
+        // Agent list (enabled agents in roster order), no inter-row gap.
         let list = NSStackView()
         list.translatesAutoresizingMaskIntoConstraints = false
         list.orientation = .vertical
         list.alignment = .leading
-        list.spacing = 1
+        list.spacing = 0
 
         let enabled = AppState.shared.agentEnabled
         for key in Agents.order where enabled.contains(key) {
@@ -93,29 +116,31 @@ final class AgentPickerController: NSViewController {
             list.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: list.widthAnchor).isActive = true
         }
+        if list.arrangedSubviews.isEmpty {
+            let empty = NSTextField(labelWithString: "No agents enabled. Open settings to turn one on.")
+            empty.font = .systemFont(ofSize: 12)
+            empty.textColor = Theme.textDim
+            empty.lineBreakMode = .byWordWrapping
+            empty.preferredMaxLayoutWidth = 320
+            list.addArrangedSubview(empty)
+        }
 
         root.addSubview(header)
-        root.addSubview(worktreeCheckbox)
-        root.addSubview(hairline)
+        root.addSubview(worktree)
         root.addSubview(list)
 
         NSLayoutConstraint.activate([
-            root.widthAnchor.constraint(equalToConstant: 280),
+            root.widthAnchor.constraint(equalToConstant: 360),
 
             header.topAnchor.constraint(equalTo: root.topAnchor, constant: 14),
-            header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
-            header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -14),
+            header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
+            header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
 
-            worktreeCheckbox.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
-            worktreeCheckbox.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
-            worktreeCheckbox.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -14),
+            worktree.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 6),
+            worktree.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 6),
+            worktree.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -6),
 
-            hairline.topAnchor.constraint(equalTo: worktreeCheckbox.bottomAnchor, constant: 12),
-            hairline.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            hairline.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            hairline.heightAnchor.constraint(equalToConstant: 1),
-
-            list.topAnchor.constraint(equalTo: hairline.bottomAnchor, constant: 6),
+            list.topAnchor.constraint(equalTo: worktree.bottomAnchor, constant: 6),
             list.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 6),
             list.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -6),
             list.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -8),
@@ -125,32 +150,122 @@ final class AgentPickerController: NSViewController {
     // MARK: - Actions
 
     private func pick(_ key: AgentKey) {
-        AppState.shared.createSession(projectID: projectID,
-                                      agent: key,
-                                      worktree: worktreeCheckbox.state == .on)
-        dismissPopover()
+        AppState.shared.createSession(projectID: projectID, agent: key, worktree: worktreeOn)
+        dismiss()
     }
 
-    private func dismissPopover() {
-        (popover ?? AgentPickerController.activePopover)?.performClose(nil)
+    @objc private func scrimClicked() { dismiss() }
+
+    private func dismiss() {
+        scrim?.removeFromSuperview()
+        if let panel {
+            panel.parent?.removeChildWindow(panel)
+            panel.orderOut(nil)
+        }
+        if AgentPickerController.active === self { AgentPickerController.active = nil }
     }
 }
 
-// MARK: - NSPopoverDelegate
+// MARK: - Borderless panel that can take key (for Esc) and dismisses on cancel.
 
-extension AgentPickerController: NSPopoverDelegate {
-    func popoverDidClose(_ notification: Notification) {
-        // Drop the static reference once the popover is gone.
-        if AgentPickerController.activePopover === (notification.object as? NSPopover) {
-            AgentPickerController.activePopover = nil
+private final class PickerPanel: NSPanel {
+    var onCancel: (() -> Void)?
+    override var canBecomeKey: Bool { true }
+    override func cancelOperation(_ sender: Any?) { onCancel?() }
+}
+
+// MARK: - Worktree checkbox row (mock `.picker-worktree`)
+
+private final class WorktreeCheckbox: NSView {
+    private var on = false
+    private let onToggle: (Bool) -> Void
+    private let box = CALayer()
+    private let checkmark = NSImageView()
+    private var tracking: NSTrackingArea?
+
+    private let line = Theme.pickerLine                              // #2a2a30
+    private let accent = NSColor(srgbRed: 0.114, green: 0.431, blue: 0.961, alpha: 1) // #1d6ef5
+
+    init(onToggle: @escaping (Bool) -> Void) {
+        self.onToggle = onToggle
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 8
+        layer?.borderWidth = 1
+        layer?.borderColor = line.cgColor
+        layer?.backgroundColor = NSColor.white.withAlphaComponent(0.03).cgColor
+
+        // 17px check tile.
+        let tile = NSView()
+        tile.translatesAutoresizingMaskIntoConstraints = false
+        tile.wantsLayer = true
+        box.cornerRadius = 5
+        box.borderWidth = 1.5
+        box.borderColor = Theme.hex("#3d3d46").cgColor
+        box.backgroundColor = Theme.hex("#0f0f12").cgColor
+        tile.layer = box
+        tile.wantsLayer = true
+
+        checkmark.translatesAutoresizingMaskIntoConstraints = false
+        checkmark.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: "on")
+        checkmark.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .bold)
+        checkmark.contentTintColor = .white
+        checkmark.isHidden = true
+        tile.addSubview(checkmark)
+
+        let label = NSTextField(labelWithString: "Open with worktree")
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = .systemFont(ofSize: 12)
+        label.textColor = Theme.hex("#c8c8d2")
+
+        addSubview(tile)
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 33),
+            tile.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 11),
+            tile.centerYAnchor.constraint(equalTo: centerYAnchor),
+            tile.widthAnchor.constraint(equalToConstant: 17),
+            tile.heightAnchor.constraint(equalToConstant: 17),
+            checkmark.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
+            checkmark.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: tile.trailingAnchor, constant: 10),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -11),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let a = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect, .assumeInside], owner: self)
+        addTrackingArea(a); tracking = a
+    }
+
+    override func mouseEntered(with event: NSEvent) { if !on { layer?.borderColor = Theme.hex("#32323a").cgColor; layer?.backgroundColor = Theme.hover.cgColor } }
+    override func mouseExited(with event: NSEvent) { if !on { restyle() } }
+    override func mouseDown(with event: NSEvent) { on.toggle(); restyle(); onToggle(on) }
+
+    private func restyle() {
+        checkmark.isHidden = !on
+        if on {
+            layer?.backgroundColor = accent.withAlphaComponent(0.07).cgColor
+            layer?.borderColor = accent.withAlphaComponent(0.28).cgColor
+            box.backgroundColor = accent.cgColor
+            box.borderColor = Theme.hex("#4d94f7").cgColor
+        } else {
+            layer?.backgroundColor = NSColor.white.withAlphaComponent(0.03).cgColor
+            layer?.borderColor = line.cgColor
+            box.backgroundColor = Theme.hex("#0f0f12").cgColor
+            box.borderColor = Theme.hex("#3d3d46").cgColor
         }
     }
 }
 
-// MARK: - Row
+// MARK: - Agent row
 
-/// One selectable agent: brand icon, name, and provider. Highlights on hover and
-/// fires `onPick` when clicked.
+/// One selectable agent (mock `.agent`): a 32px icon slot + name + provider sub.
 private final class AgentPickerRow: NSView {
     private let onPick: () -> Void
     private var tracking: NSTrackingArea?
@@ -160,29 +275,28 @@ private final class AgentPickerRow: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
-        layer?.cornerRadius = 5
+        layer?.cornerRadius = 8
 
         let def = Agents.def(agent)
 
-        // Brand icon.
+        // 32px transparent slot with a 20px centered brand glyph.
+        let slot = NSView()
+        slot.translatesAutoresizingMaskIntoConstraints = false
         let icon = NSImageView()
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.imageScaling = .scaleProportionallyUpOrDown
-        if let img = Theme.agentImage(agent) {
-            icon.image = img
-        }
+        icon.image = Theme.agentImage(agent)
+        slot.addSubview(icon)
 
-        // Name.
         let name = NSTextField(labelWithString: def.name)
         name.translatesAutoresizingMaskIntoConstraints = false
-        name.font = Theme.mono
+        name.font = .systemFont(ofSize: 13, weight: .semibold)
         name.textColor = Theme.text
         name.lineBreakMode = .byTruncatingTail
 
-        // Provider.
         let provider = NSTextField(labelWithString: def.provider)
         provider.translatesAutoresizingMaskIntoConstraints = false
-        provider.font = Theme.monoSmall
+        provider.font = .systemFont(ofSize: 10.5)
         provider.textColor = Theme.textFaint
         provider.lineBreakMode = .byTruncatingTail
 
@@ -192,18 +306,20 @@ private final class AgentPickerRow: NSView {
         textStack.alignment = .leading
         textStack.spacing = 1
 
-        addSubview(icon)
+        addSubview(slot)
         addSubview(textStack)
 
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 40),
-
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 18),
-            icon.heightAnchor.constraint(equalToConstant: 18),
-
-            textStack.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
+            heightAnchor.constraint(equalToConstant: 48),
+            slot.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            slot.centerYAnchor.constraint(equalTo: centerYAnchor),
+            slot.widthAnchor.constraint(equalToConstant: 32),
+            slot.heightAnchor.constraint(equalToConstant: 32),
+            icon.centerXAnchor.constraint(equalTo: slot.centerXAnchor),
+            icon.centerYAnchor.constraint(equalTo: slot.centerYAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 20),
+            icon.heightAnchor.constraint(equalToConstant: 20),
+            textStack.leadingAnchor.constraint(equalTo: slot.trailingAnchor, constant: 10),
             textStack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
             textStack.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
@@ -216,23 +332,16 @@ private final class AgentPickerRow: NSView {
 
     @objc private func fire() { onPick() }
 
-    // MARK: - Hover
-
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let tracking { removeTrackingArea(tracking) }
         let area = NSTrackingArea(rect: bounds,
-                                  options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                                  options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect, .assumeInside],
                                   owner: self, userInfo: nil)
         addTrackingArea(area)
         tracking = area
     }
 
-    override func mouseEntered(with event: NSEvent) {
-        layer?.backgroundColor = Theme.hover.cgColor
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        layer?.backgroundColor = NSColor.clear.cgColor
-    }
+    override func mouseEntered(with event: NSEvent) { layer?.backgroundColor = Theme.hover.cgColor }
+    override func mouseExited(with event: NSEvent) { layer?.backgroundColor = NSColor.clear.cgColor }
 }

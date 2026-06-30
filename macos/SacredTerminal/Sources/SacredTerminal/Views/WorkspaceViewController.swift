@@ -1,7 +1,8 @@
 import AppKit
 
-/// The right pane: the active session's Ghostty-style tab bar, terminal area
-/// (with optional split + browser), and the message input row (spec §5, §6, §12).
+/// The right pane: the active session's Ghostty-style tab bar and terminal area
+/// (with optional split + browser). The embedded Ghostty surface IS the input —
+/// there is no separate composer row (spec §5, §6, §12).
 ///
 /// Critical performance contract: each pane's `SurfaceView` is cached by `pane.id`
 /// so a `.sacredStateChanged` rebuild reuses the live libghostty surface instead of
@@ -41,9 +42,6 @@ final class WorkspaceViewController: NSViewController {
     private var browserController: BrowserPanelController?
     private var browserSessionID: String?
 
-    // The message input field for the active session.
-    private var inputField: NSTextField?
-
     // MARK: - View
 
     override func loadView() {
@@ -73,9 +71,8 @@ final class WorkspaceViewController: NSViewController {
         // a plain NSView, so `removeFromSuperview()` here is harmless.
         for host in hosts.values { host.removeFromSuperview() }
 
-        // Drop the rest of the chrome (tab bar, splits, input, browser view).
+        // Drop the rest of the chrome (tab bar, splits, browser view).
         view.subviews.forEach { $0.removeFromSuperview() }
-        inputField = nil
 
         guard let ctx else {
             tearDownAllHosts()
@@ -97,9 +94,8 @@ final class WorkspaceViewController: NSViewController {
 
         let tabBar = buildTabBar(project: project, session: session)
         let terminalArea = buildTerminalArea(project: project, session: session)
-        let inputRow = buildInputRow(session: session)
 
-        for v in [tabBar, terminalArea, inputRow] {
+        for v in [tabBar, terminalArea] {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
         }
@@ -110,15 +106,11 @@ final class WorkspaceViewController: NSViewController {
             tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tabBar.heightAnchor.constraint(equalToConstant: 36),
 
+            // The Ghostty surface is the input, so the terminal fills to the bottom.
             terminalArea.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
             terminalArea.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             terminalArea.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-
-            inputRow.topAnchor.constraint(equalTo: terminalArea.bottomAnchor),
-            inputRow.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            inputRow.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            inputRow.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            inputRow.heightAnchor.constraint(equalToConstant: 44),
+            terminalArea.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
         // Focus the active pane's surface so keystrokes land where the eye is.
@@ -186,17 +178,18 @@ final class WorkspaceViewController: NSViewController {
         let actions = NSStackView()
         actions.orientation = .horizontal
         actions.alignment = .centerY
-        actions.spacing = 4
+        actions.spacing = 2   // mock `.term-tab-actions { gap: 2px }`
         actions.translatesAutoresizingMaskIntoConstraints = false
 
-        let splitRight = makeActionButton(symbol: "rectangle.righthalf.inset.filled",
-                                          fallback: "⇥", tip: "Split right (⌘D)",
+        // The mock's content header has split/split/new-tab actions only — outline
+        // rect+line glyphs (not filled SF Symbols). The session's working state is
+        // shown by the rail spinner, not a pill here.
+        let splitRight = makeActionButton(glyph: .splitRight, tip: "Split right (⌘D)",
                                           action: #selector(splitRightAction))
-        let splitDown = makeActionButton(symbol: "rectangle.bottomhalf.inset.filled",
-                                         fallback: "⤓", tip: "Split down (⌘⇧D)",
+        let splitDown = makeActionButton(glyph: .splitDown, tip: "Split down (⌘⇧D)",
                                          action: #selector(splitDownAction))
-        let newTab = makeActionButton(symbol: "plus", fallback: "+",
-                                      tip: "New tab (⌘T)", action: #selector(newTabAction))
+        let newTab = makeActionButton(glyph: .newTab, tip: "New tab (⌘T)",
+                                      action: #selector(newTabAction))
         actions.addArrangedSubview(splitRight)
         actions.addArrangedSubview(splitDown)
         actions.addArrangedSubview(newTab)
@@ -219,6 +212,43 @@ final class WorkspaceViewController: NSViewController {
         ])
 
         return bar
+    }
+
+    /// A small "● Working" status pill for the tab-bar header (mirrors §8 status).
+    private func makeStatusPill(session: Session) -> NSView {
+        let meta = statusMeta(session.status)
+        let pill = NSView()
+        pill.translatesAutoresizingMaskIntoConstraints = false
+        pill.wantsLayer = true
+        pill.layer?.cornerRadius = 9
+        pill.layer?.backgroundColor = meta.color.withAlphaComponent(0.14).cgColor
+        pill.layer?.borderWidth = 1
+        pill.layer?.borderColor = meta.color.withAlphaComponent(0.45).cgColor
+
+        let dot = NSView()
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        dot.wantsLayer = true
+        dot.layer?.cornerRadius = 3.5
+        dot.layer?.backgroundColor = meta.color.cgColor
+
+        let label = NSTextField(labelWithString: meta.label)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = Theme.monoSmall
+        label.textColor = Theme.text
+
+        pill.addSubview(dot)
+        pill.addSubview(label)
+        NSLayoutConstraint.activate([
+            pill.heightAnchor.constraint(equalToConstant: 18),
+            dot.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 8),
+            dot.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+            dot.widthAnchor.constraint(equalToConstant: 7),
+            dot.heightAnchor.constraint(equalToConstant: 7),
+            label.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 6),
+            label.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -9),
+            label.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+        ])
+        return pill
     }
 
     private func makeTab(session: Session, pane: Pane) -> NSView {
@@ -291,17 +321,12 @@ final class WorkspaceViewController: NSViewController {
         return pane.title.isEmpty ? "shell" : pane.title
     }
 
-    private func makeActionButton(symbol: String, fallback: String, tip: String,
-                                  action: Selector) -> NSButton {
-        let b: NSButton
-        if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: tip) {
-            b = NSButton(image: img, target: self, action: action)
-            b.contentTintColor = Theme.textDim
-        } else {
-            b = NSButton(title: fallback, target: self, action: action)
-        }
-        b.bezelStyle = .texturedRounded
-        b.isBordered = false
+    /// The mock's `.term-tab-actions` glyphs: stroked rounded rect + a divider line
+    /// (split right/down) and a plus (new tab).
+    enum ActionGlyph { case splitRight, splitDown, newTab }
+
+    private func makeActionButton(glyph: ActionGlyph, tip: String, action: Selector) -> NSButton {
+        let b = HoverIconButton(image: actionGlyph(glyph), target: self, action: action)
         b.toolTip = tip
         b.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -309,6 +334,40 @@ final class WorkspaceViewController: NSViewController {
             b.heightAnchor.constraint(equalToConstant: 24),
         ])
         return b
+    }
+
+    /// Draw the mock's outline icon (13×13) into a template image so contentTintColor
+    /// applies. Geometry matches the mock SVG (24-unit viewBox: rect x3 y4 w18 h16).
+    private func actionGlyph(_ kind: ActionGlyph) -> NSImage {
+        let img = NSImage(size: NSSize(width: 13, height: 13), flipped: false) { _ in
+            let s = 13.0 / 24.0
+            let lw: CGFloat = 1.5
+            NSColor.black.setStroke()
+            let box = NSRect(x: 3 * s, y: 4 * s, width: 18 * s, height: 16 * s)
+            let rect = NSBezierPath(roundedRect: box, xRadius: 2 * s, yRadius: 2 * s)
+            rect.lineWidth = lw
+            let line = NSBezierPath()
+            line.lineWidth = lw
+            line.lineCapStyle = .round
+            switch kind {
+            case .splitRight:
+                rect.stroke()
+                line.move(to: NSPoint(x: 12 * s, y: 4 * s)); line.line(to: NSPoint(x: 12 * s, y: 20 * s))
+            case .splitDown:
+                rect.stroke()
+                line.move(to: NSPoint(x: 3 * s, y: 12 * s)); line.line(to: NSPoint(x: 21 * s, y: 12 * s))
+            case .newTab:
+                // Plus made of two strokes (no surrounding rect).
+                line.move(to: NSPoint(x: 12 * s, y: 5 * s)); line.line(to: NSPoint(x: 12 * s, y: 19 * s))
+                let h = NSBezierPath(); h.lineWidth = lw; h.lineCapStyle = .round
+                h.move(to: NSPoint(x: 5 * s, y: 12 * s)); h.line(to: NSPoint(x: 19 * s, y: 12 * s))
+                h.stroke()
+            }
+            line.stroke()
+            return true
+        }
+        img.isTemplate = true
+        return img
     }
 
     // MARK: - Tab / action targets
@@ -428,82 +487,6 @@ final class WorkspaceViewController: NSViewController {
         browserSessionID = nil
     }
 
-    // MARK: - Message input row (spec §6)
-
-    private func buildInputRow(session: Session) -> NSView {
-        let row = NSView()
-        row.wantsLayer = true
-        row.layer?.backgroundColor = Theme.panelBg.cgColor
-
-        let hairline = NSView()
-        hairline.wantsLayer = true
-        hairline.layer?.backgroundColor = Theme.border.cgColor
-        hairline.translatesAutoresizingMaskIntoConstraints = false
-        row.addSubview(hairline)
-
-        let activePane = session.activePane
-
-        let icon = NSImageView()
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        if activePane.kind == .agent, let img = Theme.agentImage(session.agent) {
-            icon.image = img
-        } else {
-            icon.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "shell")
-            icon.contentTintColor = Theme.textDim
-        }
-
-        let field = NSTextField()
-        field.translatesAutoresizingMaskIntoConstraints = false
-        field.isBordered = false
-        field.drawsBackground = false
-        field.focusRingType = .none
-        field.font = Theme.mono
-        field.textColor = Theme.text
-        field.delegate = self
-        field.target = self
-        field.action = #selector(submitMessage(_:))
-        let agentName = Agents.def(session.agent).name
-        field.placeholderString = activePane.kind == .shell
-            ? "type a command…"
-            : "message \(agentName)…"
-        inputField = field
-
-        row.addSubview(icon)
-        row.addSubview(field)
-
-        NSLayoutConstraint.activate([
-            hairline.leadingAnchor.constraint(equalTo: row.leadingAnchor),
-            hairline.trailingAnchor.constraint(equalTo: row.trailingAnchor),
-            hairline.topAnchor.constraint(equalTo: row.topAnchor),
-            hairline.heightAnchor.constraint(equalToConstant: 1),
-
-            icon.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 14),
-            icon.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 16),
-            icon.heightAnchor.constraint(equalToConstant: 16),
-
-            field.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
-            field.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -14),
-            field.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-        ])
-
-        return row
-    }
-
-    @objc private func submitMessage(_ sender: NSTextField) {
-        let text = sender.stringValue
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        guard let session = AppState.shared.activeContext?.session else { return }
-
-        // Write into the active pane's live surface, then record the message.
-        if let host = hosts[session.activePaneID] {
-            host.surface.send(text: text + "\n")
-        }
-        AppState.shared.send(to: session.id, message: text)
-        sender.stringValue = ""
-    }
-
     // MARK: - Host teardown
 
     private func tearDownAllHosts() {
@@ -526,20 +509,6 @@ final class WorkspaceViewController: NSViewController {
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
-}
-
-// MARK: - NSTextFieldDelegate
-
-extension WorkspaceViewController: NSTextFieldDelegate {
-    func control(_ control: NSControl, textView: NSTextView,
-                 doCommandBy selector: Selector) -> Bool {
-        // Enter submits; everything else behaves normally.
-        if selector == #selector(NSResponder.insertNewline(_:)) {
-            if let field = control as? NSTextField { submitMessage(field) }
-            return true
-        }
-        return false
-    }
 }
 
 // MARK: - Lightweight controls carrying their pane identity
@@ -578,4 +547,52 @@ private final class CloseButton: NSButton {
         toolTip = "Close tab (⌘W)"
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
+}
+
+/// A borderless icon button that reproduces the mock `.term-tab-actions button`:
+/// faint tint at rest, and on hover a rgba(255,255,255,.06) background + brighter
+/// tint.
+private final class HoverIconButton: NSButton {
+    private var tracking: NSTrackingArea?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        commonInit()
+    }
+    convenience init(image: NSImage, target: AnyObject?, action: Selector?) {
+        self.init(frame: .zero)
+        self.image = image
+        self.target = target
+        self.action = action
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
+
+    private func commonInit() {
+        isBordered = false
+        bezelStyle = .regularSquare
+        imagePosition = .imageOnly
+        title = ""
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        contentTintColor = Theme.textFaint
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let area = NSTrackingArea(rect: bounds,
+                                  options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect, .assumeInside],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        tracking = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
+        contentTintColor = Theme.text
+    }
+    override func mouseExited(with event: NSEvent) {
+        layer?.backgroundColor = NSColor.clear.cgColor
+        contentTintColor = Theme.textFaint
+    }
 }

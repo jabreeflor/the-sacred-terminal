@@ -6,6 +6,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var socket: SocketServer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Dock / app-switcher icon (spec §9 — the branching sacred-timeline mark).
+        // The dev build runs unbundled, so set it at runtime; packaging also embeds it.
+        if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
+           let icon = NSImage(contentsOf: url) {
+            NSApp.applicationIconImage = icon
+        }
+
         // Touch the Ghostty app early so libghostty is initialized once.
         _ = GhosttyApp.shared
 

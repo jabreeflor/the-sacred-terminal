@@ -51,7 +51,7 @@ final class RailViewController: NSViewController {
             topBar.topAnchor.constraint(equalTo: root.topAnchor),
             topBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             topBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            topBar.heightAnchor.constraint(equalToConstant: 44),
+            topBar.heightAnchor.constraint(equalToConstant: 34),
 
             scrollView.topAnchor.constraint(equalTo: topBar.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
@@ -91,32 +91,22 @@ final class RailViewController: NSViewController {
         bar.wantsLayer = true
         bar.layer?.backgroundColor = Theme.railBg.cgColor
 
-        let hairline = NSView()
-        hairline.translatesAutoresizingMaskIntoConstraints = false
-        hairline.wantsLayer = true
-        hairline.layer?.backgroundColor = Theme.border.cgColor
-        bar.addSubview(hairline)
-
         let gear = railIconButton(symbol: "gearshape", fallback: "⚙", tooltip: "Settings",
                                   target: self, action: #selector(openSettings))
         let plus = railIconButton(symbol: "plus", fallback: "+", tooltip: "Add project",
                                   target: self, action: #selector(showAddMenu(_:)))
         plusButton = plus
 
+        // Right-aligned, like the mock's flex-end rail-top.
         let buttons = NSStackView(views: [gear, plus])
         buttons.translatesAutoresizingMaskIntoConstraints = false
         buttons.orientation = .horizontal
-        buttons.spacing = 4
+        buttons.spacing = 2
         bar.addSubview(buttons)
 
         NSLayoutConstraint.activate([
-            buttons.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -10),
+            buttons.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -6),
             buttons.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-
-            hairline.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
-            hairline.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
-            hairline.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
-            hairline.heightAnchor.constraint(equalToConstant: 1),
         ])
         return bar
     }
@@ -244,102 +234,141 @@ final class RailViewController: NSViewController {
 
 // MARK: - Project row
 
-/// A single project header: chevron + folder glyph + monospace name. Clicking
-/// toggles collapse; hovering reveals the pinned-agent pill on the trailing edge.
+/// A single project header: folder glyph + monospace name (no chevron, matching
+/// the mock). Clicking toggles collapse; hovering reveals the pinned-agent quick
+/// pill (a solid, shadowed bar) on the trailing edge. The pill's buttons stay
+/// clickable because hit-testing routes pill hits to the buttons and every other
+/// hit to the row's own `mouseDown` (toggle).
 private final class ProjectRow: HoverView {
     private let project: Project
-    private let chevron = NSTextField(labelWithString: "")
-    private let folder = NSTextField(labelWithString: "📁")
+    private let folder = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
-    private let pill: NSStackView
+    private let pill = PillBar()
 
     init(project: Project) {
         self.project = project
-        self.pill = NSStackView()
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
-        layer?.cornerRadius = 5
+        layer?.cornerRadius = 7
 
-        chevron.font = Theme.monoSmall
-        chevron.textColor = Theme.textFaint
-        chevron.stringValue = project.collapsed ? "▸" : "▾"
+        // Gray folder glyph (SF Symbol), matching the mock's --text-dim folder.
+        folder.translatesAutoresizingMaskIntoConstraints = false
+        folder.image = NSImage(systemSymbolName: "folder", accessibilityDescription: "Project")
+        folder.contentTintColor = Theme.textDim
+        folder.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
+        folder.setContentHuggingPriority(.required, for: .horizontal)
 
-        folder.font = NSFont.systemFont(ofSize: 11)
-        folder.alphaValue = 0.85
-
-        nameLabel.font = Theme.mono
+        nameLabel.font = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .semibold)
         nameLabel.textColor = Theme.text
         nameLabel.stringValue = project.name
         nameLabel.lineBreakMode = .byTruncatingTail
-        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        nameLabel.cell?.usesSingleLineMode = true
+        nameLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
 
-        let left = NSStackView(views: [chevron, folder, nameLabel])
+        let left = NSStackView(views: [folder, nameLabel])
         left.orientation = .horizontal
-        left.spacing = 6
+        left.spacing = 7
         left.alignment = .centerY
         left.translatesAutoresizingMaskIntoConstraints = false
 
-        buildPill()
+        // Quick-pick pill: pinned agents + a "+" that opens the full picker.
+        for agent in AppState.shared.railAgents {
+            pill.addButton(AgentPillButton(agent: agent, projectID: project.id))
+        }
+        let plus = pillIconButton(symbol: "plus", fallback: "+", tooltip: "New session…",
+                                  target: self, action: #selector(openPicker))
+        pill.addButton(plus)
 
         addSubview(left)
         addSubview(pill)
 
+        // The narrow rail can't fit name + full path inline (the mock hides the
+        // path too), so the path is a hover tooltip.
+        toolTip = project.path
+
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 28),
+            heightAnchor.constraint(equalToConstant: 30),
+            folder.widthAnchor.constraint(equalToConstant: 15),
+            folder.heightAnchor.constraint(equalToConstant: 14),
             left.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             left.centerYAnchor.constraint(equalTo: centerYAnchor),
-            left.trailingAnchor.constraint(lessThanOrEqualTo: pill.leadingAnchor, constant: -6),
+            left.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -8),
 
-            pill.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            pill.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
             pill.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
 
-        pill.isHidden = true
-
-        let click = NSClickGestureRecognizer(target: self, action: #selector(toggle))
-        addGestureRecognizer(click)
+        // Drive the pill with alpha, never isHidden: toggling isHidden dirties Auto
+        // Layout, which rebuilds the hover tracking area and synthesizes spurious
+        // enter/exit — the flicker. Alpha changes don't touch layout.
+        pill.alphaValue = 0
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private func buildPill() {
-        pill.translatesAutoresizingMaskIntoConstraints = false
-        pill.orientation = .horizontal
-        pill.spacing = 2
-        pill.alignment = .centerY
-
-        for agent in AppState.shared.railAgents {
-            let b = agentPillButton(agent: agent, project: project)
-            pill.addArrangedSubview(b)
+    // Route clicks: pill buttons fire their own actions; the rest toggles collapse.
+    // The branch must NOT depend on hover/visibility-driven layout state — it keys
+    // off pill.alphaValue (set by hover) so it can't feed the tracking loop.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if pill.alphaValue > 0, let v = super.hitTest(point), v != self, v.isDescendant(of: pill) {
+            return v
         }
-        // Trailing "+" opens the full agent picker.
-        let plus = railIconButton(symbol: "plus", fallback: "+",
-                                  tooltip: "New session…", target: self,
-                                  action: #selector(openPicker))
-        plus.toolTip = "New session…"
-        pill.addArrangedSubview(plus)
+        return self
     }
 
-    private func agentPillButton(agent: AgentKey, project: Project) -> NSButton {
-        let b = AgentPillButton(agent: agent, projectID: project.id)
-        b.toolTip = "New \(Agents.def(agent).name) session"
-        b.target = b
-        b.action = #selector(AgentPillButton.fire)
-        return b
-    }
-
-    @objc private func toggle() {
+    override func mouseDown(with event: NSEvent) {
         AppState.shared.toggleCollapse(project.id)
     }
 
     @objc private func openPicker() {
-        AgentPickerController.present(projectID: project.id, relativeTo: self)
+        AgentPickerController.present(projectID: project.id, relativeTo: pill)
     }
 
     override func hoverChanged(_ hovering: Bool) {
-        pill.isHidden = !hovering
+        pill.animator().alphaValue = hovering ? 1 : 0
         layer?.backgroundColor = hovering ? Theme.hover.cgColor : NSColor.clear.cgColor
+    }
+}
+
+/// The solid hover quick-pick bar (mock `.agent-bar`): a rounded, bordered,
+/// shadowed pill that floats over the right edge of a project row.
+private final class PillBar: NSView {
+    private let stack = NSStackView()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        layer?.backgroundColor = NSColor(srgbRed: 22/255, green: 22/255, blue: 28/255, alpha: 0.96).cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.45
+        layer?.shadowRadius = 11
+        layer?.shadowOffset = CGSize(width: 0, height: -6)
+        layer?.masksToBounds = false
+
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.orientation = .horizontal
+        stack.spacing = 1
+        stack.alignment = .centerY
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 5),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -5),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 3),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func addButton(_ b: NSView) { stack.addArrangedSubview(b) }
+
+    override func layout() {
+        super.layout()
+        layer?.cornerRadius = bounds.height / 2
     }
 }
 
@@ -358,20 +387,22 @@ private final class AgentPillButton: NSButton {
         imagePosition = .imageOnly
         title = ""
         wantsLayer = true
-        layer?.cornerRadius = 4
+        layer?.cornerRadius = 12
+        toolTip = "New \(Agents.def(agent).name) session"
+        target = self
+        action = #selector(fire)
 
         if let img = Theme.agentImage(agent) {
             image = resized(img, to: 16)
         } else {
-            image = nil
             imagePosition = .noImage
             title = String(Agents.def(agent).name.prefix(1))
             font = Theme.monoSmall
             contentTintColor = Theme.textDim
         }
         NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: 22),
-            heightAnchor.constraint(equalToConstant: 22),
+            widthAnchor.constraint(equalToConstant: 24),
+            heightAnchor.constraint(equalToConstant: 24),
         ])
     }
 
@@ -390,40 +421,77 @@ private final class AgentPillButton: NSButton {
     }
 }
 
+/// A circular borderless icon button for the hover pill (24×24).
+private func pillIconButton(symbol: String, fallback: String, tooltip: String,
+                            target: AnyObject, action: Selector) -> NSButton {
+    let b = NSButton()
+    b.translatesAutoresizingMaskIntoConstraints = false
+    b.isBordered = false
+    b.bezelStyle = .regularSquare
+    b.imagePosition = .imageOnly
+    b.toolTip = tooltip
+    b.target = target
+    b.action = action
+    b.contentTintColor = Theme.textDim
+    b.wantsLayer = true
+    b.layer?.cornerRadius = 12
+    if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip) {
+        b.image = img
+    } else {
+        b.imagePosition = .noImage
+        b.title = fallback
+        b.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+    }
+    NSLayoutConstraint.activate([
+        b.widthAnchor.constraint(equalToConstant: 24),
+        b.heightAnchor.constraint(equalToConstant: 24),
+    ])
+    return b
+}
+
 // MARK: - Session row
 
-/// A single-line session: brand icon (or spinner while working/waiting), task
-/// text, a status dot (pulsing per `statusMeta`), and a ⌘N hint. Highlighted when
-/// active; a hover × closes the session.
+/// A single-line session (mock `.session`): a faint drag handle, the agent's
+/// brand icon (or a spinner while working/waiting), the task text, and a ⌘N hint.
+/// The visible box is indented under its project; when active it gets the mock's
+/// subtle PEACH fill + border (never a solid blue). A hover × closes it.
 private final class SessionRow: HoverView {
     private let session: Session
     private let active: Bool
 
+    private let box = NSView()
     private let iconView = NSImageView()
     private let spinner = NSProgressIndicator()
-    private let taskLabel = NSTextField(labelWithString: "")
-    private let dot = DotView()
+    private let label = NSTextField(labelWithString: "")
     private let hintLabel = NSTextField(labelWithString: "")
-    private let closeButton: NSButton
+    private let closeButton = NSButton()
 
     init(project: Project, session: Session, shortcut: Int?, active: Bool) {
         self.session = session
         self.active = active
-        self.closeButton = NSButton()
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        wantsLayer = true
-        layer?.cornerRadius = 5
 
-        let meta = statusMeta(session.status)
         let busy = session.status == .working || session.status == .waiting
+
+        // The indented, optionally-highlighted box.
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.wantsLayer = true
+        box.layer?.cornerRadius = 7
+        box.layer?.borderWidth = 1
+        box.layer?.borderColor = NSColor.clear.cgColor
+
+        // Faint drag handle (mock `.s-handle`).
+        let handle = NSTextField(labelWithString: "⠿")
+        handle.translatesAutoresizingMaskIntoConstraints = false
+        handle.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+        handle.textColor = Theme.textFaint
+        handle.alphaValue = 0.55
 
         // Brand icon vs. spinner.
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.imageScaling = .scaleProportionallyUpOrDown
-        if let img = Theme.agentImage(session.agent) {
-            iconView.image = img
-        }
+        iconView.image = Theme.agentImage(session.agent)
         iconView.isHidden = busy
 
         spinner.translatesAutoresizingMaskIntoConstraints = false
@@ -433,28 +501,21 @@ private final class SessionRow: HoverView {
         spinner.isHidden = !busy
         if busy { spinner.startAnimation(nil) }
 
-        let iconWrap = NSView()
-        iconWrap.translatesAutoresizingMaskIntoConstraints = false
-        iconWrap.addSubview(iconView)
-        iconWrap.addSubview(spinner)
+        // Single-line task label (the agent identity is carried by the icon).
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)
+        label.textColor = active ? Theme.text : Theme.textDim
+        label.stringValue = session.task
+        label.lineBreakMode = .byTruncatingTail
+        label.cell?.usesSingleLineMode = true
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        // Task text.
-        taskLabel.font = Theme.monoSmall
-        taskLabel.textColor = active ? Theme.text : Theme.textDim
-        taskLabel.stringValue = session.task
-        taskLabel.lineBreakMode = .byTruncatingTail
-        taskLabel.cell?.usesSingleLineMode = true
-        taskLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-
-        // Status dot.
-        dot.color = meta.color
-        dot.pulse = meta.pulse
-
-        // ⌘N hint.
+        // ⌘N hint (hidden on hover to make room for ×).
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
         hintLabel.font = Theme.monoSmall
         hintLabel.textColor = Theme.textFaint
+        hintLabel.alphaValue = 0.55
         hintLabel.stringValue = shortcut.map { "⌘\($0)" } ?? ""
-        hintLabel.alignment = .right
 
         // Close (×), revealed on hover.
         closeButton.translatesAutoresizingMaskIntoConstraints = false
@@ -467,75 +528,65 @@ private final class SessionRow: HoverView {
         closeButton.action = #selector(close)
         closeButton.isHidden = true
 
-        let row = NSStackView(views: [iconWrap, taskLabel])
-        row.orientation = .horizontal
-        row.spacing = 8
-        row.alignment = .centerY
-        row.translatesAutoresizingMaskIntoConstraints = false
-
-        // Trailing cluster: dot + hint/close overlap on the right edge.
-        let trailing = NSStackView(views: [dot, hintLabel])
-        trailing.orientation = .horizontal
-        trailing.spacing = 6
-        trailing.alignment = .centerY
-        trailing.translatesAutoresizingMaskIntoConstraints = false
-
-        addSubview(row)
-        addSubview(trailing)
-        addSubview(closeButton)
+        addSubview(box)
+        box.addSubview(handle)
+        box.addSubview(iconView)
+        box.addSubview(spinner)
+        box.addSubview(label)
+        box.addSubview(hintLabel)
+        box.addSubview(closeButton)
 
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 26),
+            heightAnchor.constraint(equalToConstant: 30),
+            // Indent the box under the project (mock `.sessions` padding-left:14).
+            box.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            box.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            box.topAnchor.constraint(equalTo: topAnchor, constant: 1),
+            box.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -1),
 
-            iconWrap.widthAnchor.constraint(equalToConstant: 16),
-            iconWrap.heightAnchor.constraint(equalToConstant: 16),
-            iconView.leadingAnchor.constraint(equalTo: iconWrap.leadingAnchor),
-            iconView.trailingAnchor.constraint(equalTo: iconWrap.trailingAnchor),
-            iconView.topAnchor.constraint(equalTo: iconWrap.topAnchor),
-            iconView.bottomAnchor.constraint(equalTo: iconWrap.bottomAnchor),
-            spinner.centerXAnchor.constraint(equalTo: iconWrap.centerXAnchor),
-            spinner.centerYAnchor.constraint(equalTo: iconWrap.centerYAnchor),
+            handle.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 6),
+            handle.centerYAnchor.constraint(equalTo: box.centerYAnchor),
 
-            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
-            row.centerYAnchor.constraint(equalTo: centerYAnchor),
-            row.trailingAnchor.constraint(lessThanOrEqualTo: trailing.leadingAnchor, constant: -6),
+            iconView.leadingAnchor.constraint(equalTo: handle.trailingAnchor, constant: 6),
+            iconView.centerYAnchor.constraint(equalTo: box.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 14),
+            iconView.heightAnchor.constraint(equalToConstant: 14),
+            spinner.centerXAnchor.constraint(equalTo: iconView.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: iconView.centerYAnchor),
 
-            trailing.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            trailing.centerYAnchor.constraint(equalTo: centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 7),
+            label.centerYAnchor.constraint(equalTo: box.centerYAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: hintLabel.leadingAnchor, constant: -6),
 
-            dot.widthAnchor.constraint(equalToConstant: 8),
-            dot.heightAnchor.constraint(equalToConstant: 8),
-            hintLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 20),
+            hintLabel.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -8),
+            hintLabel.centerYAnchor.constraint(equalTo: box.centerYAnchor),
 
-            closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
-            closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            closeButton.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -5),
+            closeButton.centerYAnchor.constraint(equalTo: box.centerYAnchor),
             closeButton.widthAnchor.constraint(equalToConstant: 18),
             closeButton.heightAnchor.constraint(equalToConstant: 18),
         ])
 
         if active {
-            layer?.backgroundColor = Theme.sessionActive.withAlphaComponent(0.16).cgColor
-            let stripe = NSView()
-            stripe.translatesAutoresizingMaskIntoConstraints = false
-            stripe.wantsLayer = true
-            stripe.layer?.backgroundColor = Theme.sessionActive.cgColor
-            stripe.layer?.cornerRadius = 1
-            addSubview(stripe)
-            NSLayoutConstraint.activate([
-                stripe.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-                stripe.centerYAnchor.constraint(equalTo: centerYAnchor),
-                stripe.widthAnchor.constraint(equalToConstant: 2),
-                stripe.heightAnchor.constraint(equalToConstant: 14),
-            ])
+            box.layer?.backgroundColor = Theme.sessionActiveBg.cgColor
+            box.layer?.borderColor = Theme.sessionActiveBorder.cgColor
         }
-
-        let click = NSClickGestureRecognizer(target: self, action: #selector(activate))
-        addGestureRecognizer(click)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    @objc private func activate() {
+    // Close button gets its own clicks; the rest of the row activates.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if !closeButton.isHidden {
+            let local = convert(point, from: superview)
+            if closeButton.convert(closeButton.bounds, to: self).contains(local) {
+                return super.hitTest(point)
+            }
+        }
+        return self
+    }
+
+    override func mouseDown(with event: NSEvent) {
         AppState.shared.setActive(session.id)
     }
 
@@ -544,11 +595,10 @@ private final class SessionRow: HoverView {
     }
 
     override func hoverChanged(_ hovering: Bool) {
-        // On hover, reveal × and tuck away the hint to make room.
         closeButton.isHidden = !hovering
         hintLabel.isHidden = hovering
         if !active {
-            layer?.backgroundColor = hovering ? Theme.hover.cgColor : NSColor.clear.cgColor
+            box.layer?.backgroundColor = hovering ? Theme.hover.cgColor : NSColor.clear.cgColor
         }
     }
 }
@@ -567,8 +617,10 @@ private class HoverView: NSView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let tracking { removeTrackingArea(tracking) }
+        // .assumeInside: when the area is (re)installed with the cursor already
+        // inside, don't synthesize a phantom mouseEntered/Exited.
         let area = NSTrackingArea(rect: bounds,
-                                  options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                                  options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect, .assumeInside],
                                   owner: self, userInfo: nil)
         addTrackingArea(area)
         tracking = area

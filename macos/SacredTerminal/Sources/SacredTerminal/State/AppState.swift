@@ -14,8 +14,23 @@ struct AgentSettings: Codable {
 struct AppearanceSettings: Codable {
     var ghosttyTheme: String = "catppuccin-frappe"   // imported from ~/.config/ghostty/config
     var railWidth: RailWidth = .standard
+    // Side-rail colors (app chrome only — the mock's Appearance pickers).
+    var railBg: String = "#0a0a0c"
+    var railFg: String = "#e6e6ea"
+    var sessionHighlight: String = "#fab387"
     enum RailWidth: String, Codable { case compact, standard, wide
         var points: CGFloat { switch self { case .compact: return 220; case .standard: return 252; case .wide: return 288 } }
+    }
+
+    init() {}
+    // Tolerant decode: fields added later default in instead of failing the load.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ghosttyTheme = try c.decodeIfPresent(String.self, forKey: .ghosttyTheme) ?? "catppuccin-frappe"
+        railWidth = try c.decodeIfPresent(RailWidth.self, forKey: .railWidth) ?? .standard
+        railBg = try c.decodeIfPresent(String.self, forKey: .railBg) ?? "#0a0a0c"
+        railFg = try c.decodeIfPresent(String.self, forKey: .railFg) ?? "#e6e6ea"
+        sessionHighlight = try c.decodeIfPresent(String.self, forKey: .sessionHighlight) ?? "#fab387"
     }
 }
 
@@ -26,6 +41,30 @@ struct GitSettings: Codable {
     var commitAttribution: Bool = false
     var keepMainUpdated: Bool = false
     var draftByDefault: Bool = false
+    // Source-control extras (the mock's Git tab).
+    var scGroupOrder: String = "changes"   // changes | staged | untracked
+    var showScAiActions: Bool = true
+    var customCommand: String = ""
+    var usePrTemplate: Bool = true
+    var generatePrOnOpen: Bool = false
+    var openPrAfterCreate: Bool = false
+
+    init() {}
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        branchPrefix = try c.decodeIfPresent(String.self, forKey: .branchPrefix) ?? "git"
+        customPrefix = try c.decodeIfPresent(String.self, forKey: .customPrefix) ?? ""
+        autoRenameBranch = try c.decodeIfPresent(Bool.self, forKey: .autoRenameBranch) ?? true
+        commitAttribution = try c.decodeIfPresent(Bool.self, forKey: .commitAttribution) ?? false
+        keepMainUpdated = try c.decodeIfPresent(Bool.self, forKey: .keepMainUpdated) ?? false
+        draftByDefault = try c.decodeIfPresent(Bool.self, forKey: .draftByDefault) ?? false
+        scGroupOrder = try c.decodeIfPresent(String.self, forKey: .scGroupOrder) ?? "changes"
+        showScAiActions = try c.decodeIfPresent(Bool.self, forKey: .showScAiActions) ?? true
+        customCommand = try c.decodeIfPresent(String.self, forKey: .customCommand) ?? ""
+        usePrTemplate = try c.decodeIfPresent(Bool.self, forKey: .usePrTemplate) ?? true
+        generatePrOnOpen = try c.decodeIfPresent(Bool.self, forKey: .generatePrOnOpen) ?? false
+        openPrAfterCreate = try c.decodeIfPresent(Bool.self, forKey: .openPrAfterCreate) ?? false
+    }
 }
 
 /// The single source of truth for the workspace tree + settings.
@@ -130,9 +169,10 @@ final class AppState {
 
     func split(_ sessionID: String, _ direction: SplitLayout) {
         guard let s = session(sessionID)?.session else { return }
-        if s.panes.count < 2 { s.panes.append(Pane(title: "shell", kind: .shell)) }
+        let added = s.panes.count < 2
+        if added { s.panes.append(Pane(title: "shell", kind: .shell)) }
         s.splitLayout = direction
-        s.activePaneID = s.panes[1].id
+        if added { s.activePaneID = s.panes[1].id }
         changed()
     }
 
