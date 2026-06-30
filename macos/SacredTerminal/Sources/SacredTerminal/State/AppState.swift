@@ -200,7 +200,7 @@ final class AppState {
         agentSettings = s.agentSettings
         appearance = s.appearance
         git = s.git
-        ID.bump(past: projects.flatMap { p in p.sessions.flatMap { [$0.id] + $0.panes.map(\.id) } })
+        IDGen.bump(past: projects.flatMap { p in p.sessions.flatMap { [$0.id] + $0.panes.map(\.id) } })
     }
 
     // MARK: - Seed (real directories so surfaces open real shells)

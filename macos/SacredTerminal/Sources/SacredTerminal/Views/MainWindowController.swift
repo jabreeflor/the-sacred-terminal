@@ -2,7 +2,7 @@ import AppKit
 
 /// The main window: a collapsible rail (projects → agent sessions) beside the
 /// terminal workspace (tabs + splits), with a titlebar crumb (spec §5).
-final class MainWindowController: NSWindowController, NSSplitViewControllerDelegate {
+final class MainWindowController: NSWindowController {
     private let rail = RailViewController()
     private let workspace = WorkspaceViewController()
     private let titlebar = TitlebarController()
@@ -22,7 +22,6 @@ final class MainWindowController: NSWindowController, NSSplitViewControllerDeleg
         super.init(window: window)
 
         splitController = NSSplitViewController()
-        splitController.delegate = self
 
         sidebarItem = NSSplitViewItem(sidebarWithViewController: rail)
         sidebarItem.minimumThickness = 200

@@ -39,12 +39,15 @@ final class GhosttyApp {
         runtime.supports_selection_clipboard = false
         runtime.wakeup_cb = { _ in
             // libghostty wants a tick on the main thread.
-            DispatchQueue.main.async { _ = ghostty_app_tick(GhosttyApp.shared.app) }
+            DispatchQueue.main.async { ghostty_app_tick(GhosttyApp.shared.app) }
         }
-        runtime.action_cb = { _, _, _ in /* surface actions (title, bell, …) — wired in SurfaceView */ }
-        runtime.read_clipboard_cb = { _, _, _, _ in }
-        runtime.write_clipboard_cb = { _, _, _, _ in }
-        runtime.close_surface_cb = { _, _ in }
+        // action_cb returns bool ("did you handle this action?"); read_clipboard_cb
+        // returns bool ("is clipboard data available?"). We don't handle either yet,
+        // so report false. Signatures (arity + return) must match ghostty.h exactly.
+        runtime.action_cb = { _, _, _ in false }            // (app, target, action) -> bool
+        runtime.read_clipboard_cb = { _, _, _ in false }    // (userdata, clipboard, state) -> bool
+        runtime.write_clipboard_cb = { _, _, _, _, _ in }   // (userdata, clipboard, content, len, confirm)
+        runtime.close_surface_cb = { _, _ in }              // (userdata, processAlive)
 
         guard let created = ghostty_app_new(&runtime, config) else {
             fatalError("ghostty_app_new failed")
@@ -53,10 +56,8 @@ final class GhosttyApp {
     }
 
     /// Drive libghostty's event loop (call from a timer / display link).
-    @discardableResult
-    func tick() -> Bool { ghostty_app_tick(app) }
-
-    func wakeup() { ghostty_app_wakeup(app) }
+    /// ghostty_app_tick returns void in the embedding API.
+    func tick() { ghostty_app_tick(app) }
 }
 
 /// One Ghostty surface == one terminal pane. libghostty runs the command in a
@@ -73,7 +74,9 @@ final class GhosttySurface {
         cfg.platform = ghostty_platform_u(macos: ghostty_platform_macos_s(
             nsview: Unmanaged.passUnretained(view).toOpaque()
         ))
-        cfg.scale_factor = view.window?.backingScaleFactor ?? 2.0
+        // scale_factor is a C `double`; backingScaleFactor is CGFloat, and the
+        // implicit CGFloat→Double bridge doesn't fire through `??`, so convert.
+        cfg.scale_factor = Double(view.window?.backingScaleFactor ?? 2.0)
 
         // The command libghostty spawns in the PTY (the agent CLI or a shell),
         // and the working directory (the project's path).

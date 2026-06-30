@@ -10,7 +10,7 @@ final class Pane: Codable, Identifiable {
 
     enum Kind: String, Codable { case agent, shell }
 
-    init(id: String = ID.next(), title: String, kind: Kind, started: Bool = false) {
+    init(id: String = IDGen.next(), title: String, kind: Kind, started: Bool = false) {
         self.id = id
         self.title = title
         self.kind = kind
@@ -34,7 +34,7 @@ final class Session: Codable, Identifiable {
     var activePaneID: String
     var splitLayout: SplitLayout
 
-    init(id: String = ID.next(),
+    init(id: String = IDGen.next(),
          agent: AgentKey,
          task: String,
          status: Status,
@@ -68,7 +68,7 @@ final class Project: Codable, Identifiable {
     var collapsed: Bool
     var sessions: [Session]
 
-    init(id: String = ID.next(), name: String, path: String, collapsed: Bool = false, sessions: [Session] = []) {
+    init(id: String = IDGen.next(), name: String, path: String, collapsed: Bool = false, sessions: [Session] = []) {
         self.id = id
         self.name = name
         self.path = path
@@ -78,7 +78,11 @@ final class Project: Codable, Identifiable {
 }
 
 /// Monotonic id generator (kept ahead of any restored ids).
-enum ID {
+///
+/// Named `IDGen` rather than `ID` so it doesn't collide with the `ID` associated
+/// type that `Identifiable` synthesizes on `Pane`/`Session`/`Project` — inside
+/// those types a bare `ID` resolves to `Self.ID` (aka `String`), not this enum.
+enum IDGen {
     private static var counter: Int = 1
     static func next() -> String { defer { counter += 1 }; return "s\(counter)" }
     static func bump(past ids: [String]) {

@@ -33,5 +33,36 @@ if [ -z "$PRODUCED" ]; then
 fi
 rm -rf "$OUT"
 cp -R "$PRODUCED" "$OUT"
+
+# Ghostty's build.zig names the single-target macOS archive `ghostty-internal.a`
+# (combined/fat slices get `lib…-fat.a`). SwiftPM's linker rejects static
+# libraries without a `lib` prefix, so lib-prefix any such archive and patch the
+# xcframework's Info.plist to match.
+python3 - "$OUT" <<'PY'
+import os, sys, plistlib
+xc = sys.argv[1]
+plist_path = os.path.join(xc, "Info.plist")
+with open(plist_path, "rb") as f:
+    info = plistlib.load(f)
+changed = False
+for lib in info.get("AvailableLibraries", []):
+    ident, name = lib["LibraryIdentifier"], lib["LibraryPath"]
+    if name.startswith("lib"):
+        continue
+    newname = "lib" + name
+    src = os.path.join(xc, ident, name)
+    if os.path.exists(src):
+        os.rename(src, os.path.join(xc, ident, newname))
+    lib["LibraryPath"] = newname
+    if lib.get("BinaryPath") == name:
+        lib["BinaryPath"] = newname
+    changed = True
+    print(f"renamed {ident}/{name} -> {newname}")
+if changed:
+    with open(plist_path, "wb") as f:
+        plistlib.dump(info, f)
+    print("patched Info.plist")
+PY
+
 echo "==> Done: $OUT"
 echo "Now: cd $ROOT && swift build"

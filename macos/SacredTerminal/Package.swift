@@ -35,6 +35,12 @@ let package = Package(
                 .linkedFramework("MetalKit"),
                 .linkedFramework("WebKit"),
                 .linkedFramework("QuartzCore"),
+                // libghostty is a static archive of Zig + C++ (spirv-cross, glslang,
+                // imgui) and uses Carbon's Text Input Services. Pull in the C++
+                // runtime and Carbon so its symbols resolve at link time; the rest
+                // (CoreText/CoreVideo/IOSurface/…) come transitively via AppKit.
+                .linkedFramework("Carbon"),
+                .linkedLibrary("c++"),
             ]
         ),
         .executableTarget(
