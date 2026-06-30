@@ -39,6 +39,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Select Xcode 26.3
+        # Pin Xcode 26.3. Zig 0.15.2 can't link its host build runner against the
+        # libSystem in the macOS SDK shipped by Xcode 26.5 (the macos-26 runner's
+        # default) — `zig build` dies with a flood of undefined libc symbols
+        # (_abort, _clock_gettime, __availability_version_check, …). Xcode 26.3's
+        # SDK works; it's what the cmux Ghostty fork's CI and local dev build with.
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.app
+          xcode-select -p
+
       - name: Toolchain
         run: |
           sw_vers
