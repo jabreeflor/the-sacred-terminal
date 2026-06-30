@@ -132,9 +132,13 @@ final class GhosttySurface {
         // implicit CGFloat→Double bridge doesn't fire through `??`, so convert.
         cfg.scale_factor = Double(view.window?.backingScaleFactor ?? 2.0)
 
-        // The command libghostty spawns in the PTY (the agent CLI or a shell),
-        // and the working directory (the project's path).
-        let command = argv.joined(separator: " ")
+        // The command libghostty spawns in the PTY (the agent CLI or a shell), and the
+        // working directory (the project's path). Resolve the executable to an absolute
+        // path against the (login-shell) PATH so agent CLIs under nvm / Homebrew /
+        // ~/.local/bin are found even when libghostty execs them directly.
+        var resolvedArgv = argv
+        if let exe = argv.first { resolvedArgv[0] = GhosttySurface.resolveExecutable(exe) }
+        let command = resolvedArgv.joined(separator: " ")
         directory.withCString { dir in
             cfg.working_directory = dir
             command.withCString { cmd in
@@ -145,6 +149,20 @@ final class GhosttySurface {
     }
 
     deinit { free() }
+
+    /// Resolve a bare command name to an absolute path against the current PATH
+    /// (set from the login shell at launch). Returns the input unchanged if it's
+    /// already absolute or can't be found (so the failure surfaces in the terminal).
+    static func resolveExecutable(_ name: String) -> String {
+        guard !name.hasPrefix("/") else { return name }
+        guard let pathEnv = getenv("PATH") else { return name }
+        let fm = FileManager.default
+        for dir in String(cString: pathEnv).split(separator: ":") where !dir.isEmpty {
+            let full = "\(dir)/\(name)"
+            if fm.isExecutableFile(atPath: full) { return full }
+        }
+        return name
+    }
 
     func free() {
         if let s = surface { ghostty_surface_free(s); surface = nil }

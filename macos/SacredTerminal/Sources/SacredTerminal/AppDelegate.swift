@@ -6,6 +6,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var socket: SocketServer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // A GUI app launched via Finder/`open` inherits a minimal PATH that omits the
+        // user's shell additions (nvm, Homebrew, ~/.local/bin), so agent CLIs like
+        // `gemini` / `claude` can't be found and their sessions die on launch. Import
+        // the login shell's PATH once so every libghostty-spawned command resolves.
+        importShellPath()
+
         // Dock / app-switcher icon (spec §9 — the branching sacred-timeline mark).
         // The dev build runs unbundled, so set it at runtime; packaging also embeds it.
         if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
@@ -72,4 +78,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() { SettingsWindowController.shared.show(tab: .agents) }
+
+    /// Replace the process PATH with the user's login-shell PATH (run once at launch,
+    /// before any session spawns). `-ilc` sources the interactive profile so nvm /
+    /// Homebrew / ~/.local/bin land on PATH, matching what the user sees in a terminal.
+    private func importShellPath() {
+        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: shell)
+        proc.arguments = ["-ilc", "printf '%s' \"$PATH\""]
+        let out = Pipe()
+        proc.standardOutput = out
+        proc.standardError = Pipe()
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            if let path = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty {
+                setenv("PATH", path, 1)
+            }
+        } catch {
+            // Keep the inherited PATH; absolute-path resolution in GhosttySurface still helps.
+        }
+    }
 }

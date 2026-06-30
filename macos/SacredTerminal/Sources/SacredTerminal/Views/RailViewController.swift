@@ -335,6 +335,22 @@ private final class ProjectRow: HoverView {
         pill.animator().alphaValue = hovering ? 1 : 0
         layer?.backgroundColor = hovering ? Theme.hover.cgColor : NSColor.clear.cgColor
     }
+
+    // Creating a session rebuilds the rail, so this row is recreated *under* the
+    // cursor; `.assumeInside` suppresses the synthetic mouseEntered, which left the
+    // quick-pick pill hidden until the user moved out and back (so a second session
+    // seemed impossible to start). Re-derive hover from the real pointer once laid out.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window else { return }
+            let pt = self.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            let inside = self.bounds.contains(pt)
+            self.pill.alphaValue = inside ? 1 : 0
+            self.layer?.backgroundColor = inside ? Theme.hover.cgColor : NSColor.clear.cgColor
+        }
+    }
 }
 
 /// The solid hover quick-pick bar (mock `.agent-bar`): a rounded, bordered,
@@ -379,13 +395,21 @@ private final class PillBar: NSView {
 }
 
 /// A small brand-icon button on the project hover pill that pre-opens a session.
+/// On hover the icon grows a little + gains a faint backing, so it's clear which
+/// agent a click will launch.
 private final class AgentPillButton: NSButton {
     private let agent: AgentKey
     private let projectID: String
+    private let baseImage: NSImage?
+    private var tracking: NSTrackingArea?
+
+    private static let restSize: CGFloat = 16
+    private static let hoverSize: CGFloat = 20
 
     init(agent: AgentKey, projectID: String) {
         self.agent = agent
         self.projectID = projectID
+        self.baseImage = Theme.agentImage(agent)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         isBordered = false
@@ -398,8 +422,8 @@ private final class AgentPillButton: NSButton {
         target = self
         action = #selector(fire)
 
-        if let img = Theme.agentImage(agent) {
-            image = resized(img, to: 16)
+        if let img = baseImage {
+            image = AgentPillButton.resized(img, to: AgentPillButton.restSize)
         } else {
             imagePosition = .noImage
             title = String(Agents.def(agent).name.prefix(1))
@@ -414,12 +438,33 @@ private final class AgentPillButton: NSButton {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private func resized(_ image: NSImage, to side: CGFloat) -> NSImage {
+    private static func resized(_ image: NSImage, to side: CGFloat) -> NSImage {
         let out = NSImage(size: NSSize(width: side, height: side))
         out.lockFocus()
         image.draw(in: NSRect(x: 0, y: 0, width: side, height: side))
         out.unlockFocus()
         return out
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let a = NSTrackingArea(rect: bounds,
+                               options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect, .assumeInside],
+                               owner: self, userInfo: nil)
+        addTrackingArea(a); tracking = a
+    }
+
+    override func mouseEntered(with event: NSEvent) { setHover(true) }
+    override func mouseExited(with event: NSEvent) { setHover(false) }
+
+    private func setHover(_ hovering: Bool) {
+        if let img = baseImage {
+            image = AgentPillButton.resized(img, to: hovering ? AgentPillButton.hoverSize : AgentPillButton.restSize)
+        } else {
+            contentTintColor = hovering ? Theme.text : Theme.textDim
+        }
+        layer?.backgroundColor = hovering ? NSColor.white.withAlphaComponent(0.10).cgColor : NSColor.clear.cgColor
     }
 
     @objc func fire() {
@@ -524,13 +569,21 @@ private final class SessionRow: HoverView {
         hintLabel.alphaValue = 0.55
         hintLabel.stringValue = shortcut.map { "⌘\($0)" } ?? ""
 
-        // Close (×), revealed on hover.
+        // Close (×), revealed on hover. Use a TEMPLATE symbol — `contentTintColor`
+        // tints images, not button title text, so a bare "×" title rendered in the
+        // default (near-invisible on the dark rail) color.
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.isBordered = false
         closeButton.bezelStyle = .regularSquare
-        closeButton.title = "×"
-        closeButton.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        closeButton.imagePosition = .imageOnly
+        if let xmark = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close session") {
+            closeButton.image = xmark
+            closeButton.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
+        } else {
+            closeButton.title = "✕"
+        }
         closeButton.contentTintColor = Theme.textDim
+        closeButton.toolTip = "Close session"
         closeButton.target = self
         closeButton.action = #selector(close)
         closeButton.isHidden = true

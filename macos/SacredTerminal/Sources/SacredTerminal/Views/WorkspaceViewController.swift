@@ -130,16 +130,6 @@ final class WorkspaceViewController: NSViewController {
         stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        // Ghost art — the Claude mark, faint (mock `.empty .ghost-art`).
-        let ghost = NSImageView()
-        ghost.translatesAutoresizingMaskIntoConstraints = false
-        if let img = Theme.agentImage(.claude) {
-            img.size = NSSize(width: 30, height: 30)
-            ghost.image = img
-        }
-        ghost.imageScaling = .scaleProportionallyUpOrDown
-        ghost.alphaValue = 0.35
-
         let title = NSTextField(labelWithString: hasProjects ? "No session open" : "No projects yet")
         title.font = NSFont.systemFont(ofSize: 15, weight: .medium)
         title.textColor = Theme.textDim
@@ -154,7 +144,6 @@ final class WorkspaceViewController: NSViewController {
 
         let pill = makeAccentPill(hasProjects ? "+ New session" : "+ Add project")
 
-        stack.addArrangedSubview(ghost)
         stack.addArrangedSubview(title)
         stack.addArrangedSubview(hint)
         stack.setCustomSpacing(16, after: hint)
@@ -162,8 +151,6 @@ final class WorkspaceViewController: NSViewController {
         view.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            ghost.widthAnchor.constraint(equalToConstant: 30),
-            ghost.heightAnchor.constraint(equalToConstant: 30),
             stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),
         ])
