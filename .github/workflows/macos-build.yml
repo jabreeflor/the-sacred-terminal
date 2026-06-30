@@ -4,13 +4,16 @@ name: macOS build
 # AppKit + libghostty app can be built — mirroring how cmux builds in CI:
 # build GhosttyKit.xcframework from Ghostty (Zig), then swift build / swift test.
 
+# Run once per change: PR branches build via `pull_request`; `main` builds via
+# `push`. (Triggering on both push:"**" and pull_request double-runs every PR
+# commit.)
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
 
 concurrency:
-  group: macos-build-${{ github.ref }}
+  group: macos-build-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
