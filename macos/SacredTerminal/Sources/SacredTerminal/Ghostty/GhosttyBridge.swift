@@ -32,14 +32,18 @@ final class GhosttyApp {
         // (the stored `config`/`app` members aren't initialized yet).
         let cfg: ghostty_config_t = ghostty_config_new()
         ghostty_config_load_default_files(cfg)
-        // Then pin the app's design theme — Catppuccin Frappé (spec §9 / the mock) —
-        // on top, so every surface matches the design out of the box. Loaded after
-        // the user's files so it wins for the theme; `path` is just a diagnostics
-        // label and must be NUL-terminated (withCString provides that).
-        let overrides = "theme = catppuccin-frappe"
-        overrides.withCString { contents in
-            "sacred-terminal-defaults".withCString { path in
-                ghostty_config_load_string(cfg, contents, UInt(overrides.utf8.count), path)
+        // Pin the app's design theme — Catppuccin Frappé (spec §9 / the mock) — ONLY
+        // when the user hasn't chosen a theme in their own Ghostty config. Loading it
+        // unconditionally after the user's files silently overrode their theme, which
+        // also contradicted Settings → Appearance ("imported from your Ghostty config").
+        // Now Frappé is just the default for users who haven't set one; a user theme
+        // wins. (`path` is a diagnostics label; withCString NUL-terminates it.)
+        if GhosttyApp.resolvedTheme().isAppDefault {
+            let overrides = "theme = catppuccin-frappe"
+            overrides.withCString { contents in
+                "sacred-terminal-defaults".withCString { path in
+                    ghostty_config_load_string(cfg, contents, UInt(overrides.utf8.count), path)
+                }
             }
         }
         ghostty_config_finalize(cfg)
@@ -70,6 +74,44 @@ final class GhosttyApp {
     /// Drive libghostty's event loop (call from a timer / display link).
     /// ghostty_app_tick returns void in the embedding API.
     func tick() { ghostty_app_tick(app) }
+
+    // MARK: - Theme resolution (Settings → Appearance)
+
+    /// The terminal theme actually in effect: the user's Ghostty `theme` if they set
+    /// one, otherwise the app's Catppuccin Frappé default. Static + cheap (just reads
+    /// the user's config files), so the Settings UI can call it without spinning up
+    /// libghostty. `isAppDefault` is true only when we're supplying Frappé ourselves.
+    static func resolvedTheme() -> (name: String, isAppDefault: Bool) {
+        if let userTheme = userConfiguredTheme() { return (userTheme, false) }
+        return ("catppuccin-frappe", true)
+    }
+
+    /// Scan the user's Ghostty config file(s) for an uncommented `theme` setting.
+    /// Returns its value (e.g. "nord", or "light:…,dark:…") or nil if none is set.
+    /// Mirrors Ghostty's default config locations on macOS; not a full parser (it does
+    /// not follow `config-file` includes), but it covers themes set in the main file.
+    private static func userConfiguredTheme() -> String? {
+        let home = NSHomeDirectory()
+        var paths: [String] = []
+        if let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"], !xdg.isEmpty {
+            paths.append("\(xdg)/ghostty/config")
+        }
+        paths.append("\(home)/.config/ghostty/config")
+        paths.append("\(home)/Library/Application Support/com.mitchellh.ghostty/config")
+
+        for path in paths {
+            guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+            for rawLine in contents.split(whereSeparator: \.isNewline) {
+                let line = rawLine.trimmingCharacters(in: .whitespaces)
+                if line.isEmpty || line.hasPrefix("#") { continue }
+                guard let eq = line.firstIndex(of: "=") else { continue }
+                guard line[..<eq].trimmingCharacters(in: .whitespaces) == "theme" else { continue }
+                let value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces)
+                if !value.isEmpty { return value }
+            }
+        }
+        return nil
+    }
 }
 
 /// One Ghostty surface == one terminal pane. libghostty runs the command in a

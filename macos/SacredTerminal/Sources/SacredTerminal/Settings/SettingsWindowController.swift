@@ -564,10 +564,13 @@ final class SettingsWindowController: NSObject {
                              color: Theme.textDim, font: .systemFont(ofSize: 12)), to: stack)
 
             add(sectionHeading("Terminal"), to: stack, gap: 14)
-            add(wrappedLabel("Imported from your Ghostty config — not editable in this app.",
+            let resolved = GhosttyApp.resolvedTheme()
+            add(wrappedLabel(resolved.isAppDefault
+                                ? "No theme set in your Ghostty config, so sessions use the app's default. Set `theme` in Ghostty to override it."
+                                : "Imported from your Ghostty config — not editable in this app.",
                              color: Theme.textDim, font: .systemFont(ofSize: 11)), to: stack, gap: 4)
-            add(ghosttyImportCard(theme: ap.ghosttyTheme), to: stack, gap: 8)
-            add(wrappedLabel("Change theme in Ghostty config, then reload. Open location reveals the config file in Finder.",
+            add(ghosttyImportCard(theme: resolved.name, isAppDefault: resolved.isAppDefault), to: stack, gap: 8)
+            add(wrappedLabel("Change the theme in your Ghostty config, then start a new session to apply it. Open location reveals the config file in Finder.",
                              color: Theme.textDim, font: .systemFont(ofSize: 11)), to: stack, gap: 8)
 
             add(sectionHeading("Side rail"), to: stack, gap: 18)
@@ -599,6 +602,8 @@ final class SettingsWindowController: NSObject {
         AppState.shared.appearance.railWidth = map[s.tag]; AppState.shared.changed()
     }
 
+    // Re-detect the Ghostty theme from disk: `changed()` rebuilds the pane, which
+    // re-reads GhosttyApp.resolvedTheme(). (New sessions pick up a changed theme.)
     @objc private func reloadGhostty() { AppState.shared.changed() }
     @objc private func openGhosttyLocation() {
         let path = (NSString(string: "~/.config/ghostty/config")).expandingTildeInPath
@@ -607,7 +612,7 @@ final class SettingsWindowController: NSObject {
 
     // MARK: - Cards
 
-    private func ghosttyImportCard(theme: String) -> NSView {
+    private func ghosttyImportCard(theme: String, isAppDefault: Bool) -> NSView {
         let card = cardView()
 
         let swatch = NSView()
@@ -618,9 +623,11 @@ final class SettingsWindowController: NSObject {
         swatch.layer?.borderWidth = 1
         swatch.layer?.borderColor = NSColor.white.withAlphaComponent(0.08).cgColor
 
-        let importLabel = label("IMPORTED THEME", color: Theme.textFaint, font: .systemFont(ofSize: 10, weight: .semibold))
+        let importLabel = label(isAppDefault ? "DEFAULT THEME" : "IMPORTED THEME",
+                                color: Theme.textFaint, font: .systemFont(ofSize: 10, weight: .semibold))
         let themeName = label(theme, color: segOnText, font: NSFont.monospacedSystemFont(ofSize: 13, weight: .semibold))
-        let pathMeta = label("~/.config/ghostty/config", color: Theme.textFaint, font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular))
+        let pathMeta = label(isAppDefault ? "app default — no theme in Ghostty config" : "~/.config/ghostty/config",
+                             color: Theme.textFaint, font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular))
         let body = NSStackView(views: [importLabel, themeName, pathMeta])
         body.orientation = .vertical; body.alignment = .leading; body.spacing = 3
         body.translatesAutoresizingMaskIntoConstraints = false
@@ -745,7 +752,8 @@ final class SettingsWindowController: NSObject {
         let railSide = NSView()
         railSide.translatesAutoresizingMaskIntoConstraints = false
         railSide.wantsLayer = true
-        railSide.layer?.backgroundColor = Theme.railBg.cgColor
+        // Render from the live Appearance values so the preview reflects the controls.
+        railSide.layer?.backgroundColor = Theme.railBgLive.cgColor
 
         func bar(active: Bool) -> NSView {
             let v = NSView()
@@ -753,11 +761,12 @@ final class SettingsWindowController: NSObject {
             v.wantsLayer = true
             v.layer?.cornerRadius = 4
             if active {
-                v.layer?.backgroundColor = Theme.sessionActiveBg.cgColor
+                v.layer?.backgroundColor = Theme.sessionActiveBgLive.cgColor
                 v.layer?.borderWidth = 1
-                v.layer?.borderColor = Theme.sessionActiveBorder.cgColor
+                v.layer?.borderColor = Theme.sessionActiveBorderLive.cgColor
             } else {
-                v.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
+                // Inactive rows hint at the Foreground color.
+                v.layer?.backgroundColor = Theme.railFgLive.withAlphaComponent(0.12).cgColor
             }
             v.heightAnchor.constraint(equalToConstant: 8).isActive = true
             return v

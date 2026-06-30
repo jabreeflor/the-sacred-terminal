@@ -266,7 +266,7 @@ private final class ProjectRow: HoverView {
         folder.setContentHuggingPriority(.required, for: .horizontal)
 
         nameLabel.font = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .semibold)
-        nameLabel.textColor = Theme.text
+        nameLabel.textColor = Theme.railFgLive   // Appearance → Foreground (live)
         nameLabel.stringValue = project.name
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.cell?.usesSingleLineMode = true
@@ -510,7 +510,8 @@ private final class SessionRow: HoverView {
         // Single-line task label (the agent identity is carried by the icon).
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)
-        label.textColor = active ? Theme.text : Theme.textDim
+        // Active rows use the live Appearance → Foreground; inactive stay dimmed chrome.
+        label.textColor = active ? Theme.railFgLive : Theme.textDim
         label.stringValue = session.task
         label.lineBreakMode = .byTruncatingTail
         label.cell?.usesSingleLineMode = true
@@ -574,20 +575,22 @@ private final class SessionRow: HoverView {
         ])
 
         if active {
-            box.layer?.backgroundColor = Theme.sessionActiveBg.cgColor
-            box.layer?.borderColor = Theme.sessionActiveBorder.cgColor
+            // Appearance → Active session highlight (live).
+            box.layer?.backgroundColor = Theme.sessionActiveBgLive.cgColor
+            box.layer?.borderColor = Theme.sessionActiveBorderLive.cgColor
         }
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    // Close button gets its own clicks; the rest of the row activates.
+    // Close button gets its own clicks; the rest of the row activates. Resolve the hit
+    // via `super.hitTest` (coordinate-system-agnostic) and only route to the close
+    // button when that's what was actually hit — the previous manual conversion
+    // double-offset `point`, so the × missed for rows away from the superview origin.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        if !closeButton.isHidden {
-            let local = convert(point, from: superview)
-            if closeButton.convert(closeButton.bounds, to: self).contains(local) {
-                return super.hitTest(point)
-            }
+        if !closeButton.isHidden, let hit = super.hitTest(point),
+           hit == closeButton || hit.isDescendant(of: closeButton) {
+            return hit
         }
         return self
     }
