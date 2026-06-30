@@ -11,8 +11,8 @@ OUT="$ROOT/vendor/GhosttyKit.xcframework"
 
 if [ ! -d "$GHOSTTY_DIR/.git" ] && [ ! -f "$GHOSTTY_DIR/build.zig" ]; then
   echo "Ghostty source not found at $GHOSTTY_DIR."
-  echo "Vendor it as a submodule first:"
-  echo "  git submodule add https://github.com/ghostty-org/ghostty vendor/ghostty"
+  echo "Vendor cmux's Ghostty fork (carries the embedding API + stays buildable):"
+  echo "  git submodule add https://github.com/manaflow-ai/ghostty vendor/ghostty"
   echo "  git submodule update --init --recursive"
   exit 1
 fi
@@ -20,9 +20,10 @@ fi
 echo "==> Building GhosttyKit.xcframework (this compiles libghostty; takes a while)…"
 cd "$GHOSTTY_DIR"
 
-# Ghostty exposes an xcframework build step that produces GhosttyKit.xcframework
-# containing the static lib + the ghostty.h embedding header.
-zig build -Doptimize=ReleaseFast xcframework
+# Produce GhosttyKit.xcframework (static lib + ghostty.h embedding header).
+# Native target, matching cmux's documented dev build. Add
+# -Dxcframework-target=universal for a distributable Intel+arm64 build.
+zig build -Demit-xcframework=true -Doptimize=ReleaseFast
 
 # Locate the produced framework and copy it into place.
 PRODUCED="$(find "$GHOSTTY_DIR" -name 'GhosttyKit.xcframework' -maxdepth 4 | head -1 || true)"

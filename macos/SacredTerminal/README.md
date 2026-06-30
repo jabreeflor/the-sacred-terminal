@@ -45,8 +45,10 @@ This is a Swift Package; libghostty must be vendored first (mirrors cmux's Ghost
 ```bash
 cd macos/SacredTerminal
 
-# 1. Vendor Ghostty and build GhosttyKit.xcframework (needs Zig + Xcode CLT)
-git submodule add https://github.com/ghostty-org/ghostty vendor/ghostty
+# 1. Vendor Ghostty and build GhosttyKit.xcframework (needs Zig + Xcode CLT).
+#    Use cmux's Ghostty fork — it carries the embedding API and stays buildable;
+#    upstream ghostty-org/ghostty@main fights the vendored Highway C++ build.
+git submodule add https://github.com/manaflow-ai/ghostty vendor/ghostty
 git submodule update --init --recursive
 ./scripts/build-ghostty.sh
 

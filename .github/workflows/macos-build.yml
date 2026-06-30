@@ -25,10 +25,11 @@ jobs:
         shell: bash
         working-directory: .
     env:
-      # Pin to a Ghostty release tag for reproducibility (e.g. v1.1.3), or leave
-      # empty to track the default branch. If the default branch pins a Zig dev
-      # build that's no longer downloadable, pin a release tag here.
-      GHOSTTY_REF: ""
+      # cmux builds GhosttyKit from its OWN Ghostty fork (see manaflow-ai/cmux
+      # .gitmodules), which carries the embedding API and stays buildable —
+      # upstream ghostty-org/ghostty@main fights the vendored Highway C++ build.
+      GHOSTTY_REPO: https://github.com/manaflow-ai/ghostty
+      GHOSTTY_REF: ""   # empty = the fork's default branch; set a commit/tag to pin
       PKG: macos/SacredTerminal
     steps:
       - uses: actions/checkout@v4
@@ -39,12 +40,12 @@ jobs:
           xcodebuild -version
           swift --version
 
-      - name: Clone Ghostty
+      - name: Clone Ghostty (cmux fork)
         run: |
           if [ -n "$GHOSTTY_REF" ]; then
-            git clone --depth 1 --branch "$GHOSTTY_REF" https://github.com/ghostty-org/ghostty vendor/ghostty
+            git clone --depth 1 --recurse-submodules --branch "$GHOSTTY_REF" "$GHOSTTY_REPO" vendor/ghostty
           else
-            git clone --depth 1 https://github.com/ghostty-org/ghostty vendor/ghostty
+            git clone --depth 1 --recurse-submodules "$GHOSTTY_REPO" vendor/ghostty
           fi
 
       - name: Determine Zig version
@@ -71,7 +72,10 @@ jobs:
 
       - name: Build GhosttyKit.xcframework
         working-directory: vendor/ghostty
-        run: zig build -Demit-xcframework=true -Dxcframework-target=universal -Doptimize=ReleaseFast
+        # Native target (the runner's arch) — matches cmux's documented dev build
+        # and avoids the universal cross-target C++ surface. Add
+        # -Dxcframework-target=universal for distributable (Intel+arm64) builds.
+        run: zig build -Demit-xcframework=true -Doptimize=ReleaseFast
 
       - name: Stage GhosttyKit into the package
         run: |
