@@ -17,9 +17,32 @@ final class AgentPickerController: NSViewController {
 
     // MARK: - Presentation
 
-    static func present(projectID: String, relativeTo view: NSView) {
+    /// Dismiss any visible picker (e.g. after a relaunch or stuck scrim).
+    static func dismissActive() {
         active?.dismiss()
-        guard let parent = view.window, let parentContent = parent.contentView else { return }
+    }
+
+    static func present(projectID: String, relativeTo view: NSView) {
+        dismissActive()
+        guard let parent = view.window else { return }
+        present(projectID: projectID, in: parent, anchor: .below(view))
+    }
+
+    /// Present centered in the window — used by ⌘N where anchoring to the whole rail
+    /// would shove the picker off-screen.
+    static func present(projectID: String, in window: NSWindow) {
+        dismissActive()
+        guard window.contentView != nil else { return }
+        present(projectID: projectID, in: window, anchor: .centered)
+    }
+
+    private enum Anchor {
+        case below(NSView)
+        case centered
+    }
+
+    private static func present(projectID: String, in parent: NSWindow, anchor: Anchor) {
+        guard let parentContent = parent.contentView else { return }
 
         let controller = AgentPickerController(projectID: projectID)
         controller.loadView()
@@ -47,17 +70,30 @@ final class AgentPickerController: NSViewController {
         panel.contentView = content
         panel.onCancel = { [weak controller] in controller?.dismiss() }
 
-        // Anchor below the pill's bottom-left + 6px (mock openPicker: left=r.left,
-        // top=r.bottom+6). Screen coords are bottom-up, so subtract the height.
-        let anchorInWindow = view.convert(view.bounds, to: nil)
-        let anchorOnScreen = parent.convertToScreen(anchorInWindow)
-        var x = anchorOnScreen.minX
-        var y = anchorOnScreen.minY - 6 - size.height
-        if let vf = parent.screen?.visibleFrame {
-            x = min(max(x, vf.minX + 8), vf.maxX - size.width - 8)
-            y = max(y, vf.minY + 8)
+        let origin: NSPoint
+        switch anchor {
+        case .below(let view):
+            // Anchor below the pill's bottom-left + 6px (mock openPicker).
+            let anchorInWindow = view.convert(view.bounds, to: nil)
+            let anchorOnScreen = parent.convertToScreen(anchorInWindow)
+            var x = anchorOnScreen.minX
+            var y = anchorOnScreen.minY - 6 - size.height
+            if let vf = parent.screen?.visibleFrame {
+                x = min(max(x, vf.minX + 8), vf.maxX - size.width - 8)
+                y = max(y, vf.minY + 8)
+            }
+            origin = NSPoint(x: x, y: y)
+        case .centered:
+            let frame = parent.frame
+            var x = frame.midX - size.width / 2
+            var y = frame.midY - size.height / 2
+            if let vf = parent.screen?.visibleFrame {
+                x = min(max(x, vf.minX + 8), vf.maxX - size.width - 8)
+                y = min(max(y, vf.minY + 8), vf.maxY - size.height - 8)
+            }
+            origin = NSPoint(x: x, y: y)
         }
-        panel.setFrameOrigin(NSPoint(x: x, y: y))
+        panel.setFrameOrigin(origin)
         parent.addChildWindow(panel, ordered: .above)
         panel.makeKeyAndOrderFront(nil)
 
@@ -329,6 +365,8 @@ private final class AgentPickerRow: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    override func mouseDown(with event: NSEvent) { fire() }
 
     @objc private func fire() { onPick() }
 

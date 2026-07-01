@@ -184,7 +184,10 @@ final class AppState {
     }
 
     func setActivePane(_ sessionID: String, _ paneID: String) {
-        session(sessionID)?.session.activePaneID = paneID; changed()
+        guard let s = session(sessionID)?.session else { return }
+        guard s.activePaneID != paneID else { return }
+        s.activePaneID = paneID
+        changed()
     }
 
     // browser

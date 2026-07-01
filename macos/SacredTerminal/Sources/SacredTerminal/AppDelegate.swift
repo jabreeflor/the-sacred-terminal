@@ -21,6 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         buildMenu()
 
+        AgentPickerController.dismissActive()
+
         // Build + show the main window FIRST so its chrome (titlebar, rail, workspace)
         // paints immediately at the launch size. libghostty initializes lazily when the
         // first terminal surface enters the window — and that surface spin-up is itself

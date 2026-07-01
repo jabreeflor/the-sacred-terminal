@@ -112,6 +112,7 @@ final class SocketServer {
         }
 
         listenFD = fd
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK)
 
         // Accept loop driven by a DispatchSource so we never block a thread.
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
@@ -147,35 +148,36 @@ final class SocketServer {
 
     // MARK: - Per-connection loop
 
-    /// Read newline-delimited JSON commands until EOF, replying to each.
+    /// Read one command on the socket queue, then handle + reply on the main thread.
     private func serve(_ fd: Int32) {
-        defer { close(fd) }
-
         var buffer = Data()
-        let chunkSize = 4096
-        var chunk = [UInt8](repeating: 0, count: chunkSize)
+        var chunk = [UInt8](repeating: 0, count: 4096)
 
-        while true {
+        readLoop: while true {
             let n = read(fd, &chunk, chunkSize)
-            if n == 0 { break }                    // peer closed
+            if n == 0 { close(fd); return }
             if n < 0 {
                 if errno == EINTR { continue }
-                break
+                close(fd); return
             }
             buffer.append(contentsOf: chunk[0..<n])
+            if buffer.contains(0x0A) { break readLoop }
+        }
 
-            // Process every complete line we have so far.
-            while let nl = buffer.firstIndex(of: 0x0A) {
-                let lineData = buffer.subdata(in: buffer.startIndex..<nl)
-                // Advance past the newline.
-                buffer.removeSubrange(buffer.startIndex...nl)
-                let trimmed = trimCR(lineData)
-                if trimmed.isEmpty { continue }
-                let reply = handle(line: trimmed)
-                if !writeLine(fd, reply) { return }
-            }
+        guard let nl = buffer.firstIndex(of: 0x0A) else { close(fd); return }
+        let lineData = buffer.subdata(in: buffer.startIndex..<nl)
+        let trimmed = trimCR(lineData)
+        guard !trimmed.isEmpty else { close(fd); return }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { close(fd); return }
+            let reply = self.handle(line: trimmed)
+            _ = self.writeLine(fd, reply)
+            close(fd)
         }
     }
+
+    private let chunkSize = 4096
 
     /// Strip a trailing CR so CRLF clients are handled gracefully.
     private func trimCR(_ data: Data) -> Data {
@@ -253,58 +255,39 @@ final class SocketServer {
     // MARK: - Command implementations (all AppState access on the main thread)
 
     private func listSessions() -> [[String: Any]] {
-        return mainSync {
-            AppState.shared.allSessions.map { ctx in
-                [
-                    "id": ctx.session.id,
-                    "project": ctx.project.name,
-                    "agent": ctx.session.agent.rawValue,
-                    "task": ctx.session.task,
-                    "status": ctx.session.status.rawValue,
-                ]
-            }
+        AppState.shared.allSessions.map { ctx in
+            [
+                "id": ctx.session.id,
+                "project": ctx.project.name,
+                "agent": ctx.session.agent.rawValue,
+                "task": ctx.session.task,
+                "status": ctx.session.status.rawValue,
+            ]
         }
     }
 
     private func focusSession(id: String) -> [String: Any] {
-        // Validate the id against state, then ask the main window to snap to it.
-        let exists = mainSync { AppState.shared.session(id) != nil }
-        guard exists else {
+        guard AppState.shared.session(id) != nil else {
             return ["ok": false, "error": "no session \"\(id)\""]
         }
-        DispatchQueue.main.async {
-            AppState.shared.setActive(id)
-            NotificationCenter.default.post(name: .sacredFocusSession, object: id)
-        }
+        AppState.shared.setActive(id)
+        NotificationCenter.default.post(name: .sacredFocusSession, object: id)
         return ["ok": true, "id": id]
     }
 
     private func newSession(projectID: String, agent: AgentKey) -> [String: Any] {
-        // Resolve the project on the main thread, create the session there, and
-        // hand back the new id so the caller can immediately drive it.
-        let result: [String: Any] = mainSync {
-            guard AppState.shared.projects.contains(where: { $0.id == projectID }) else {
-                return ["ok": false, "error": "no project \"\(projectID)\""]
-            }
-            guard let session = AppState.shared.createSession(projectID: projectID,
-                                                              agent: agent,
-                                                              worktree: false) else {
-                return ["ok": false, "error": "could not create session"]
-            }
-            return ["ok": true, "id": session.id]
+        guard AppState.shared.projects.contains(where: { $0.id == projectID }) else {
+            return ["ok": false, "error": "no project \"\(projectID)\""]
         }
-        return result
+        guard let session = AppState.shared.createSession(projectID: projectID,
+                                                          agent: agent,
+                                                          worktree: false) else {
+            return ["ok": false, "error": "could not create session"]
+        }
+        return ["ok": true, "id": session.id]
     }
 
     // MARK: - Helpers
-
-    /// Run a block on the main thread and return its value, even when called from
-    /// the socket queue. If we're already on main (shouldn't happen), run inline
-    /// to avoid a deadlock.
-    private func mainSync<T>(_ body: () -> T) -> T {
-        if Thread.isMainThread { return body() }
-        return DispatchQueue.main.sync(execute: body)
-    }
 
     /// Serialize a reply, falling back to a minimal error object if encoding fails.
     private func jsonData(_ object: [String: Any]) -> Data {

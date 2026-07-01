@@ -249,10 +249,12 @@ private final class ProjectRow: HoverView {
     private let project: Project
     private let folder = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
+    private let leftStack: NSStackView
     private let pill = PillBar()
 
     init(project: Project) {
         self.project = project
+        self.leftStack = NSStackView()
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
@@ -272,11 +274,14 @@ private final class ProjectRow: HoverView {
         nameLabel.cell?.usesSingleLineMode = true
         nameLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
 
-        let left = NSStackView(views: [folder, nameLabel])
+        let left = leftStack
         left.orientation = .horizontal
         left.spacing = 7
         left.alignment = .centerY
         left.translatesAutoresizingMaskIntoConstraints = false
+
+        left.addArrangedSubview(folder)
+        left.addArrangedSubview(nameLabel)
 
         // Quick-pick pill: pinned agents + a "+" that opens the full picker.
         for agent in AppState.shared.railAgents {
@@ -313,15 +318,19 @@ private final class ProjectRow: HoverView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    // Route clicks: pill buttons fire their own actions; the rest toggles collapse.
-    // The branch must NOT depend on hover/visibility-driven layout state — it keys
-    // off HoverView's tracked state so alpha animation timing can't turn a pill
-    // click into a row-collapse click while the pill is fading in.
+    // Route clicks: pill buttons create sessions; only the folder/name strip toggles
+    // collapse. Previously the whole row collapsed on any miss-click while the pill
+    // was fading in, which made a second agent session feel impossible to open.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        if isHovering, let v = super.hitTest(point), v != self, v.isDescendant(of: pill) {
-            return v
+        if pill.acceptsHitTesting {
+            if let hit = pill.hitTest(convert(point, to: pill)) {
+                return hit
+            }
         }
-        return self
+        if leftStack.bounds.contains(convert(point, to: leftStack)) {
+            return self
+        }
+        return nil
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -333,6 +342,7 @@ private final class ProjectRow: HoverView {
     }
 
     override func hoverChanged(_ hovering: Bool) {
+        pill.acceptsHitTesting = hovering
         pill.animator().alphaValue = hovering ? 1 : 0
         layer?.backgroundColor = hovering ? Theme.hover.cgColor : NSColor.clear.cgColor
     }
@@ -342,6 +352,8 @@ private final class ProjectRow: HoverView {
 /// shadowed pill that floats over the right edge of a project row.
 private final class PillBar: NSView {
     private let stack = NSStackView()
+    /// Set by the parent row on hover — decoupled from alpha so clicks work while fading in.
+    var acceptsHitTesting = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -371,6 +383,11 @@ private final class PillBar: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard acceptsHitTesting else { return nil }
+        return super.hitTest(point)
+    }
+
     func addButton(_ b: NSView) { stack.addArrangedSubview(b) }
 
     override func layout() {
@@ -399,6 +416,7 @@ private final class AgentPillButton: NSButton {
         translatesAutoresizingMaskIntoConstraints = false
         isBordered = false
         bezelStyle = .regularSquare
+        setButtonType(.momentaryChange)
         imagePosition = .imageOnly
         title = ""
         wantsLayer = true
@@ -474,6 +492,10 @@ private final class AgentPillButton: NSButton {
 
     @objc func fire() {
         AppState.shared.createSession(projectID: projectID, agent: agent, worktree: false)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        fire()
     }
 }
 

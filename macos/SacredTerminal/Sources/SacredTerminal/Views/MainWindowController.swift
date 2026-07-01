@@ -28,6 +28,7 @@ final class MainWindowController: NSWindowController {
         window.contentViewController = rootVC
         window.setContentSize(NSSize(width: 1240, height: 820))
         window.center()
+        window.delegate = self
 
         // The project › task crumb lives in RootViewController's own 38px titlebar,
         // and RootViewController syncs rail collapse — so the window controller only
@@ -106,10 +107,29 @@ final class MainWindowController: NSWindowController {
             return false
         case "n":
             let project = state.activeContext?.project ?? state.projects.first
-            if let project { AgentPickerController.present(projectID: project.id, relativeTo: rail.view) }
+            if let project, let window { AgentPickerController.present(projectID: project.id, in: window) }
             return true
         default:
             return false
         }
+    }
+}
+
+// MARK: - Window focus → libghostty (matches Ghostty's BaseTerminalController)
+
+extension MainWindowController: NSWindowDelegate {
+    func windowDidBecomeKey(_ notification: Notification) {
+        GhosttyApp.shared.setAppFocus(true)
+        // LaunchServices often leaves first responder on the window itself.
+        if window?.firstResponder === window {
+            workspace.focusActiveTerminal()
+        } else {
+            workspace.syncTerminalFocus()
+        }
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        GhosttyApp.shared.setAppFocus(false)
+        workspace.syncTerminalFocus()
     }
 }

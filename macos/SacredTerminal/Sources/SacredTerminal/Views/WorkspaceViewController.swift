@@ -114,9 +114,26 @@ final class WorkspaceViewController: NSViewController {
         ])
 
         // Focus the active pane's surface so keystrokes land where the eye is.
-        if let host = hosts[session.activePaneID] {
-            DispatchQueue.main.async { host.surface.focusSurface() }
+        focusActiveTerminal()
+    }
+
+    /// Make the active pane's libghostty surface first responder and sync focus.
+    func focusActiveTerminal() {
+        guard let id = AppState.shared.activeContext?.session.activePaneID,
+              let host = hosts[id] else { return }
+        DispatchQueue.main.async {
+            let surface = host.surface
+            if surface.window?.firstResponder === surface {
+                surface.syncGhosttyFocus()
+            } else {
+                surface.focusSurface()
+            }
         }
+    }
+
+    /// Reconcile libghostty focus flags after window key-state changes.
+    func syncTerminalFocus() {
+        for host in hosts.values { host.surface.syncGhosttyFocus() }
     }
 
     // MARK: - Empty state

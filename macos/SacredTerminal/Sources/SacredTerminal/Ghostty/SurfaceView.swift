@@ -9,14 +9,17 @@ import GhosttyKit
 
 final class SurfaceView: NSView {
     private var ghostty: GhosttySurface?
-    private var displayLink: CVDisplayLink?
+    /// Tracks what we've told libghostty — avoids redundant set_focus calls.
+    private var ghosttyFocused = false
+    /// Accumulates composed text while `interpretKeyEvents` runs inside `keyDown`.
+    private var keyTextAccumulator: [String]?
 
     let paneID: String
     let sessionID: String
     private let argv: [String]
     private let directory: String
 
-    /// Called when this surface gains focus (drives the active-pane state).
+    /// Called when the user clicks this pane (drives active-pane state).
     var onFocus: ((String) -> Void)?
 
     init(sessionID: String, paneID: String, argv: [String], directory: String) {
@@ -36,31 +39,40 @@ final class SurfaceView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil, ghostty == nil else { return }
-        // Defer the (heavy) libghostty surface + PTY + Metal spin-up by one runloop
-        // tick so the window's chrome paints first — otherwise a cold launch blocks on
-        // GPU/PTY init before anything is visible. Re-check we're still in a window and
-        // haven't already created the surface (viewDidMoveToWindow can fire repeatedly).
         DispatchQueue.main.async { [weak self] in
             guard let self, self.window != nil, self.ghostty == nil else { return }
-            // libghostty spawns the PTY (the agent CLI or shell) and starts rendering.
             self.ghostty = GhosttySurface(view: self, argv: self.argv, directory: self.directory)
             self.ghostty?.setContentScale(self.window?.backingScaleFactor ?? 2.0)
             self.updateSurfaceSize()
-            self.startDisplayLink()
+            self.syncGhosttyFocus()
+            self.ghostty?.refresh()
         }
     }
 
     override func removeFromSuperview() {
-        stopDisplayLink()
         ghostty?.free()
         ghostty = nil
         super.removeFromSuperview()
     }
 
-    /// Push raw text into the PTY (message bar, spec §6).
     func send(text: String) { ghostty?.sendText(text) }
 
-    func focusSurface() { window?.makeFirstResponder(self) }
+    func focusSurface() {
+        window?.makeFirstResponder(self)
+        syncGhosttyFocus()
+    }
+
+    func focusFromUserInteraction() {
+        focusSurface()
+        onFocus?(paneID)
+    }
+
+    func syncGhosttyFocus() {
+        let shouldFocus = (window?.isKeyWindow ?? false) && (window?.firstResponder === self)
+        guard ghostty != nil, ghosttyFocused != shouldFocus else { return }
+        ghosttyFocused = shouldFocus
+        ghostty?.setFocus(shouldFocus)
+    }
 
     // MARK: - Sizing
 
@@ -83,68 +95,112 @@ final class SurfaceView: NSView {
                          height: UInt32(max(1, px.height * scale)))
     }
 
-    // MARK: - Draw loop (CVDisplayLink -> surface.draw)
-
-    private func startDisplayLink() {
-        var link: CVDisplayLink?
-        CVDisplayLinkCreateWithActiveCGDisplays(&link)
-        guard let link else { return }
-        let ctx = Unmanaged.passUnretained(self).toOpaque()
-        CVDisplayLinkSetOutputCallback(link, { (_, _, _, _, _, userInfo) -> CVReturn in
-            let view = Unmanaged<SurfaceView>.fromOpaque(userInfo!).takeUnretainedValue()
-            DispatchQueue.main.async { view.ghostty?.draw() }
-            return kCVReturnSuccess
-        }, ctx)
-        CVDisplayLinkStart(link)
-        displayLink = link
-    }
-
-    private func stopDisplayLink() {
-        if let link = displayLink { CVDisplayLinkStop(link) }
-        displayLink = nil
-    }
-
     // MARK: - Focus
 
     override var acceptsFirstResponder: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func becomeFirstResponder() -> Bool {
-        ghostty?.setFocus(true)
-        onFocus?(paneID)
-        return super.becomeFirstResponder()
+        let ok = super.becomeFirstResponder()
+        if ok { syncGhosttyFocus() }
+        return ok
     }
 
     override func resignFirstResponder() -> Bool {
-        ghostty?.setFocus(false)
-        return super.resignFirstResponder()
+        let ok = super.resignFirstResponder()
+        if ok { syncGhosttyFocus() }
+        return ok
     }
 
-    // MARK: - Keyboard (NSEvent -> ghostty_input_key_s)
+    // MARK: - Keyboard (Ghostty SurfaceView_AppKit pattern)
 
-    override func keyDown(with event: NSEvent) { sendKey(event, action: GHOSTTY_ACTION_PRESS) }
-    override func keyUp(with event: NSEvent) { sendKey(event, action: GHOSTTY_ACTION_RELEASE) }
-    override func flagsChanged(with event: NSEvent) { sendKey(event, action: GHOSTTY_ACTION_PRESS) }
-
-    private func sendKey(_ event: NSEvent, action: ghostty_input_action_e) {
-        var key = ghostty_input_key_s()
-        key.action = action
-        key.mods = GhosttyInput.mods(from: event.modifierFlags)
-        key.keycode = UInt32(event.keyCode)
-        let text = event.characters ?? ""
-        // libghostty copies the text synchronously during ghostty_surface_key.
-        text.withCString { ptr in
-            key.text = ptr
-            ghostty?.sendKey(key)
+    override func keyDown(with event: NSEvent) {
+        guard let ghostty else {
+            interpretKeyEvents([event])
+            return
         }
+
+        let translationMods = GhosttyInput.translatedModifierFlags(for: event, surface: ghostty)
+        let translationEvent: NSEvent
+        if translationMods == event.modifierFlags {
+            translationEvent = event
+        } else {
+            translationEvent = NSEvent.keyEvent(
+                with: event.type,
+                location: event.locationInWindow,
+                modifierFlags: translationMods,
+                timestamp: event.timestamp,
+                windowNumber: event.windowNumber,
+                context: nil,
+                characters: event.characters(byApplyingModifiers: translationMods) ?? "",
+                charactersIgnoringModifiers: event.charactersIgnoringModifiers ?? "",
+                isARepeat: event.isARepeat,
+                keyCode: event.keyCode
+            ) ?? event
+        }
+
+        let action = event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS
+        keyTextAccumulator = []
+        defer { keyTextAccumulator = nil }
+
+        interpretKeyEvents([translationEvent])
+
+        if let list = keyTextAccumulator, !list.isEmpty {
+            for text in list {
+                _ = keyAction(action, event: event, translationEvent: translationEvent, text: text)
+            }
+        } else {
+            _ = keyAction(action, event: event, translationEvent: translationEvent,
+                          text: translationEvent.ghosttyCharacters)
+        }
+    }
+
+    override func keyUp(with event: NSEvent) {
+        _ = keyAction(GHOSTTY_ACTION_RELEASE, event: event)
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        _ = keyAction(GHOSTTY_ACTION_PRESS, event: event)
+    }
+
+    override func doCommand(by selector: Selector) {
+        // Swallow unhandled edit commands so AppKit doesn't beep; bindings are
+        // encoded through keyDown after interpretKeyEvents.
+    }
+
+    @discardableResult
+    private func keyAction(
+        _ action: ghostty_input_action_e,
+        event: NSEvent,
+        translationEvent: NSEvent? = nil,
+        text: String? = nil,
+        composing: Bool = false
+    ) -> Bool {
+        guard let ghostty else { return false }
+        var key = event.ghosttyKeyEvent(action, translationMods: translationEvent?.modifierFlags)
+        key.composing = composing
+        if let text, !text.isEmpty, let codepoint = text.utf8.first, codepoint >= 0x20 {
+            return text.withCString { ptr in
+                key.text = ptr
+                return ghostty.sendKey(key)
+            }
+        }
+        key.text = nil
+        return ghostty.sendKey(key)
     }
 
     // MARK: - Mouse
 
-    override func mouseDown(with event: NSEvent) { focusSurface(); mouseButton(event, .left, down: true) }
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        syncGhosttyFocus()
+        onFocus?(paneID)
+        mouseButton(event, .left, down: true)
+    }
+
     override func mouseUp(with event: NSEvent) { mouseButton(event, .left, down: false) }
     override func rightMouseDown(with event: NSEvent) { mouseButton(event, .right, down: true) }
     override func rightMouseUp(with event: NSEvent) { mouseButton(event, .right, down: false) }
-
     override func mouseMoved(with event: NSEvent) { mousePos(event) }
     override func mouseDragged(with event: NSEvent) { mousePos(event) }
 
@@ -170,7 +226,6 @@ final class SurfaceView: NSView {
     }
 }
 
-/// NSEvent → libghostty input enums. Isolated so the mapping lives in one place.
 enum GhosttyInput {
     static func mods(from flags: NSEvent.ModifierFlags) -> ghostty_input_mods_e {
         var raw: UInt32 = 0
@@ -183,7 +238,38 @@ enum GhosttyInput {
     }
 
     static func scrollMods(precise: Bool) -> ghostty_input_scroll_mods_t {
-        // bit 0 = precise scrolling, per ghostty.h
         ghostty_input_scroll_mods_t(precise ? 1 : 0)
     }
+}
+
+// MARK: - NSTextInputClient (minimal stubs for interpretKeyEvents / IME)
+
+extension SurfaceView: NSTextInputClient {
+    func insertText(_ string: Any, replacementRange: NSRange) {
+        guard NSApp.currentEvent != nil else { return }
+        let chars: String
+        switch string {
+        case let v as NSAttributedString: chars = v.string
+        case let v as String: chars = v
+        default: return
+        }
+        if var acc = keyTextAccumulator {
+            acc.append(chars)
+            keyTextAccumulator = acc
+            return
+        }
+        ghostty?.sendText(chars)
+    }
+
+    func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {}
+    func unmarkText() {}
+    func selectedRange() -> NSRange { NSRange(location: NSNotFound, length: 0) }
+    func markedRange() -> NSRange { NSRange(location: NSNotFound, length: 0) }
+    func hasMarkedText() -> Bool { false }
+    func attributedSubstring(forProposedRange range: NSRange,
+                             actualRange: NSRangePointer?) -> NSAttributedString? { nil }
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
+    func firstRect(forCharacterRange range: NSRange,
+                   actualRange: NSRangePointer?) -> NSRect { .zero }
+    func characterIndex(for point: NSPoint) -> Int { 0 }
 }

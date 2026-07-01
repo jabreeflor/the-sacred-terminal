@@ -54,13 +54,17 @@ final class GhosttyApp {
         runtime.userdata = nil
         runtime.supports_selection_clipboard = false
         runtime.wakeup_cb = { _ in
-            // libghostty wants a tick on the main thread.
             DispatchQueue.main.async { ghostty_app_tick(GhosttyApp.shared.app) }
         }
-        // action_cb returns bool ("did you handle this action?"); read_clipboard_cb
-        // returns bool ("is clipboard data available?"). We don't handle either yet,
-        // so report false. Signatures (arity + return) must match ghostty.h exactly.
-        runtime.action_cb = { _, _, _ in false }            // (app, target, action) -> bool
+        runtime.action_cb = { _, target, action in
+            guard action.tag == GHOSTTY_ACTION_RENDER,
+                  target.tag == GHOSTTY_TARGET_SURFACE,
+                  let handle = target.target.surface else { return false }
+            DispatchQueue.main.async {
+                GhosttySurfaceRegistry.shared.draw(handle)
+            }
+            return false
+        }
         runtime.read_clipboard_cb = { _, _, _ in false }    // (userdata, clipboard, state) -> bool
         runtime.write_clipboard_cb = { _, _, _, _, _ in }   // (userdata, clipboard, content, len, confirm)
         runtime.close_surface_cb = { _, _ in }              // (userdata, processAlive)
@@ -74,6 +78,10 @@ final class GhosttyApp {
     /// Drive libghostty's event loop (call from a timer / display link).
     /// ghostty_app_tick returns void in the embedding API.
     func tick() { ghostty_app_tick(app) }
+
+    /// Mirror the host window's key state — libghostty ignores surface keys when
+    /// the app isn't focused (Ghostty's BaseTerminalController does the same).
+    func setAppFocus(_ focused: Bool) { ghostty_app_set_focus(app, focused) }
 
     // MARK: - Theme resolution (Settings → Appearance)
 
@@ -144,6 +152,9 @@ final class GhosttySurface {
             command.withCString { cmd in
                 cfg.command = cmd
                 surface = ghostty_surface_new(GhosttyApp.shared.app, &cfg)
+                if let s = surface {
+                    GhosttySurfaceRegistry.shared.register(s, self)
+                }
             }
         }
     }
@@ -165,7 +176,11 @@ final class GhosttySurface {
     }
 
     func free() {
-        if let s = surface { ghostty_surface_free(s); surface = nil }
+        if let s = surface {
+            GhosttySurfaceRegistry.shared.unregister(s)
+            ghostty_surface_free(s)
+            surface = nil
+        }
     }
 
     func setContentScale(_ scale: CGFloat) {
@@ -189,11 +204,23 @@ final class GhosttySurface {
         ghostty_surface_draw(s)
     }
 
+    func refresh() {
+        guard let s = surface else { return }
+        ghostty_surface_refresh(s)
+        draw()
+    }
+
     /// Forward a key event. libghostty encodes it (Kitty protocol, etc.) and
     /// writes the bytes to the PTY itself.
-    func sendKey(_ event: ghostty_input_key_s) {
-        guard let s = surface else { return }
-        ghostty_surface_key(s, event)
+    @discardableResult
+    func sendKey(_ event: ghostty_input_key_s) -> Bool {
+        guard let s = surface else { return false }
+        return ghostty_surface_key(s, event)
+    }
+
+    func translateKeyMods(_ mods: ghostty_input_mods_e) -> ghostty_input_mods_e {
+        guard let s = surface else { return mods }
+        return ghostty_surface_key_translation_mods(s, mods)
     }
 
     /// Inject text directly into the PTY (used by the message bar, spec §6).

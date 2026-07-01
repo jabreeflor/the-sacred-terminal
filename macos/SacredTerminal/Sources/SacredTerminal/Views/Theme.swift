@@ -45,12 +45,16 @@ enum Theme {
     static let monoSmall = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
 
     /// Brand icon for an agent, loaded from the bundled Resources/Icons.
+    private static var agentImageCache: [AgentKey: NSImage] = [:]
+
     static func agentImage(_ key: AgentKey) -> NSImage? {
+        if let cached = agentImageCache[key] { return cached }
         let name = Agents.def(key).icon
         if let url = Bundle.module.url(forResource: name, withExtension: "svg", subdirectory: "Icons")
             ?? Bundle.module.url(forResource: name, withExtension: "png", subdirectory: "Icons"),
            let img = NSImage(contentsOf: url) {
             img.isTemplate = false
+            agentImageCache[key] = img
             return img
         }
         return nil
