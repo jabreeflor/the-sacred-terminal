@@ -84,9 +84,11 @@ final class WorkspaceViewController: NSViewController {
         let project = ctx.project
         let session = ctx.session
 
-        // Reap hosts whose panes no longer exist in the active session. Only one
-        // session is visible at a time, so a host for any other pane is dead.
-        let liveIDs = Set(session.panes.map(\.id))
+        // Reap hosts only when their pane is gone from the workspace entirely.
+        // Switching sessions must not free the inactive session's Ghostty surface:
+        // those PTYs are expected to keep running in the background and reattach
+        // when the user switches back.
+        let liveIDs = allLivePaneIDs()
         for (paneID, host) in hosts where !liveIDs.contains(paneID) {
             host.surface.removeFromSuperview()   // frees the libghostty surface
             hosts.removeValue(forKey: paneID)
@@ -134,6 +136,14 @@ final class WorkspaceViewController: NSViewController {
     /// Reconcile libghostty focus flags after window key-state changes.
     func syncTerminalFocus() {
         for host in hosts.values { host.surface.syncGhosttyFocus() }
+    }
+
+    private func allLivePaneIDs() -> Set<String> {
+        Set(AppState.shared.projects.flatMap { project in
+            project.sessions.flatMap { session in
+                session.panes.map(\.id)
+            }
+        })
     }
 
     // MARK: - Empty state
@@ -608,6 +618,16 @@ private final class TabButton: NSButton {
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard bounds.contains(point) else { return nil }
+        for subview in subviews.reversed() where subview is CloseButton {
+            if let hit = subview.hitTest(convert(point, to: subview)) {
+                return hit
+            }
+        }
+        return self
+    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()

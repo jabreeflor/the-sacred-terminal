@@ -146,8 +146,12 @@ final class SacredTerminalIntegrationTests: XCTestCase {
                                  projectPath: projectDir,
                                  collapsed: false,
                                  includeSecondSession: true)
+        let surfaceEventsLog = supportDir.appendingPathComponent("surface-events.log")
 
-        let app = try launchApp(supportDir: supportDir)
+        let app = try launchApp(supportDir: supportDir,
+                                extraEnvironment: [
+                                    "SACRED_TERMINAL_SURFACE_EVENTS_LOG": surfaceEventsLog.path,
+                                ])
         defer { app.terminate() }
 
         let axApp = AXUIElementCreateApplication(app.process.processIdentifier)
@@ -169,6 +173,7 @@ final class SacredTerminalIntegrationTests: XCTestCase {
         try waitUntil("first session became active from Accessibility press") {
             try fixtureActiveSessionID(supportDir: supportDir) == "s10"
         }
+        try assertSurfaceEventsRetainedAcrossSessionSwitch(surfaceEventsLog)
 
         let newTab = try waitForAXElement(in: axApp, identifier: "workspace-new-tab", timeout: 5)
         try pressAXElement(newTab, identifier: "workspace-new-tab")
@@ -218,12 +223,17 @@ final class SacredTerminalIntegrationTests: XCTestCase {
                             timeout: 10)
     }
 
-    private func launchApp(supportDir: URL) throws -> RunningApp {
+    private func launchApp(supportDir: URL,
+                           extraEnvironment: [String: String] = [:]) throws -> RunningApp {
         let process = Process()
         process.executableURL = try Self.appExecutableURL()
         process.arguments = []
         process.currentDirectoryURL = Self.packageRoot
-        process.environment = Self.mergedEnvironment(e2eEnvironment(supportDir: supportDir))
+        var environment = e2eEnvironment(supportDir: supportDir)
+        for (key, value) in extraEnvironment {
+            environment[key] = value
+        }
+        process.environment = Self.mergedEnvironment(environment)
 
         let stdout = Pipe()
         let stderr = Pipe()
@@ -395,6 +405,22 @@ final class SacredTerminalIntegrationTests: XCTestCase {
         let session = try fixtureSession(supportDir: supportDir)
         let panes = try XCTUnwrap(session["panes"] as? [[String: Any]])
         return panes.compactMap { $0["id"] as? String }
+    }
+
+    private func assertSurfaceEventsRetainedAcrossSessionSwitch(_ logURL: URL) throws {
+        let lines = try surfaceEventLines(logURL)
+        XCTAssertEqual(lines.filter { $0 == "init session=s10 pane=s11" }.count, 1)
+        XCTAssertEqual(lines.filter { $0 == "init session=s12 pane=s13" }.count, 1)
+        XCTAssertFalse(lines.contains("free session=s10 pane=s11"),
+                       "Switching away from s10 should not free its terminal surface. Events: \(lines)")
+        XCTAssertFalse(lines.contains("free session=s12 pane=s13"),
+                       "Switching away from s12 should not free its terminal surface. Events: \(lines)")
+    }
+
+    private func surfaceEventLines(_ logURL: URL) throws -> [String] {
+        guard FileManager.default.fileExists(atPath: logURL.path) else { return [] }
+        let text = try String(contentsOf: logURL, encoding: .utf8)
+        return text.split(separator: "\n").map(String.init)
     }
 
     private func fixtureActivePaneID(supportDir: URL) throws -> String {

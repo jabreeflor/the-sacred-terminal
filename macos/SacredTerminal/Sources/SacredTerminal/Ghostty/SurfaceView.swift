@@ -31,6 +31,7 @@ final class SurfaceView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layerContentsRedrawPolicy = .duringViewResize
+        Self.logSurfaceEvent("init session=\(sessionID) pane=\(paneID)")
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
@@ -53,6 +54,7 @@ final class SurfaceView: NSView {
     }
 
     override func removeFromSuperview() {
+        Self.logSurfaceEvent("free session=\(sessionID) pane=\(paneID)")
         ghostty?.free()
         ghostty = nil
         super.removeFromSuperview()
@@ -226,6 +228,23 @@ final class SurfaceView: NSView {
         ghostty?.mousePos(x: Double(p.x * scale),
                           y: Double((bounds.height - p.y) * scale),
                           mods: GhosttyInput.mods(from: event.modifierFlags))
+    }
+
+    private static func logSurfaceEvent(_ message: String) {
+        guard let path = ProcessInfo.processInfo.environment["SACRED_TERMINAL_SURFACE_EVENTS_LOG"],
+              !path.isEmpty,
+              let data = "\(message)\n".data(using: .utf8) else { return }
+        let url = URL(fileURLWithPath: path)
+        if FileManager.default.fileExists(atPath: path),
+           let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            do {
+                try handle.seekToEnd()
+                try handle.write(contentsOf: data)
+            } catch {}
+        } else {
+            try? data.write(to: url, options: .atomic)
+        }
     }
 }
 
