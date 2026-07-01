@@ -1,0 +1,16 @@
+{
+  "name": "sacred-terminal-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "npx-runnable MCP server for The Sacred Terminal.",
+  "type": "module",
+  "bin": {
+    "sacred-terminal-mcp": "./bin/sacred-terminal-mcp.mjs"
+  },
+  "scripts": {
+    "check:mcp": "node --check bin/sacred-terminal-mcp.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

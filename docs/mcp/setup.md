@@ -1,25 +1,8 @@
 # Sacred Terminal MCP Setup
 
-This repo includes a stdio MCP server for driving a running Sacred Terminal app through the same Unix socket control surface used by the `sacred` CLI.
+This repo includes an `npx`-runnable stdio MCP server for driving a running Sacred Terminal app through the same Unix socket control surface used by the `sacred` CLI.
 
-## Build The Server
-
-```bash
-cd macos/SacredTerminal
-swift build --product sacred-mcp
-```
-
-The debug executable is usually written to:
-
-```text
-macos/SacredTerminal/.build/debug/sacred-mcp
-```
-
-SwiftPM may also place it under an architecture-specific directory such as:
-
-```text
-macos/SacredTerminal/.build/arm64-apple-macosx/debug/sacred-mcp
-```
+The MCP server itself is Node-based. You do not need to build the Swift MCP target to use it.
 
 ## Run The App
 
@@ -40,13 +23,27 @@ open .build/SacredTerminal.app
 
 ## Configure An MCP Client
 
-Use the built executable as a stdio MCP command.
+Use `npx` as the stdio MCP command.
 
 ```json
 {
   "mcpServers": {
     "sacred-terminal": {
-      "command": "/absolute/path/to/the-sacred-terminal/macos/SacredTerminal/.build/debug/sacred-mcp"
+      "command": "npx",
+      "args": ["-y", "github:jabreeflor/the-sacred-terminal"]
+    }
+  }
+}
+```
+
+For local development from a checkout, point `npx` at the repo directory:
+
+```json
+{
+  "mcpServers": {
+    "sacred-terminal": {
+      "command": "npx",
+      "args": ["-y", "/absolute/path/to/the-sacred-terminal"]
     }
   }
 }
@@ -58,7 +55,8 @@ If your client starts from a different environment or you want an isolated app s
 {
   "mcpServers": {
     "sacred-terminal": {
-      "command": "/absolute/path/to/the-sacred-terminal/macos/SacredTerminal/.build/debug/sacred-mcp",
+      "command": "npx",
+      "args": ["-y", "github:jabreeflor/the-sacred-terminal"],
       "env": {
         "SACRED_TERMINAL_APP_SUPPORT_DIR": "/tmp/sacred-terminal-dev"
       }
@@ -98,11 +96,11 @@ The server exposes tools that map app UI interactions into actual app socket com
 
 ## Smoke Test
 
-With Sacred Terminal running, you can check the server handshake manually:
+From the repo root, check the server handshake manually:
 
 ```bash
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"manual","version":"1"}}}' \
-  | macos/SacredTerminal/.build/debug/sacred-mcp
+  | npx -y .
 ```
 
 You should receive a JSON-RPC response containing:
@@ -120,4 +118,5 @@ You should receive a JSON-RPC response containing:
 
 - If a tool returns `The Sacred Terminal does not appear to be running`, launch the app first.
 - If the app is running but tools still cannot connect, make sure the MCP server and app agree on `SACRED_TERMINAL_APP_SUPPORT_DIR`.
-- If the executable path does not exist, rebuild with `swift build --product sacred-mcp` and check `.build/debug/` plus the architecture-specific `.build/*/debug/` directory.
+- If `npx` cannot find the package from GitHub, use the local checkout form: `npx -y /absolute/path/to/the-sacred-terminal`.
+- If your MCP client requires Content-Length framing, the Node server supports it; newline-delimited JSON-RPC also works for local smoke tests.
