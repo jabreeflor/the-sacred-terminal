@@ -1,4 +1,6 @@
 import AppKit
+import Darwin
+import SacredTerminalSupport
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindow: MainWindowController?
@@ -10,7 +12,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // user's shell additions (nvm, Homebrew, ~/.local/bin), so agent CLIs like
         // `gemini` / `claude` can't be found and their sessions die on launch. Import
         // the login shell's PATH once so every libghostty-spawned command resolves.
-        importShellPath()
+        if !SacredTerminalRuntime.shouldSkipShellPathImport {
+            importShellPath()
+        }
 
         // Dock / app-switcher icon (spec §9 — the branching sacred-timeline mark).
         // The dev build runs unbundled, so set it at runtime; packaging also embeds it.
@@ -36,14 +40,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let main = MainWindowController()
         mainWindow = main
         main.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        if !SacredTerminalRuntime.isE2EMode {
+            NSApp.activate(ignoringOtherApps: true)
+        }
 
         // The "always running" menu-bar item — surfaces every session's pulse (§11).
         statusItem = StatusItemController()
 
         // Unix-socket control API + CLI, à la cmux's TerminalController.
         socket = SocketServer()
-        try? socket?.start()
+        do {
+            try socket?.start()
+        } catch {
+            fputs("SacredTerminal: socket startup failed: \(error)\n", stderr)
+            fflush(stderr)
+            if SacredTerminalRuntime.isE2EMode {
+                exit(70)
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

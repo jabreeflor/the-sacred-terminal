@@ -18,6 +18,10 @@ let package = Package(
         .executable(name: "sacred", targets: ["sacred-cli"]),
     ],
     targets: [
+        .target(
+            name: "SacredTerminalSupport",
+            path: "Sources/SacredTerminalSupport"
+        ),
         // libghostty, packaged as an xcframework (built from the Ghostty submodule).
         // Exposes the C embedding API (ghostty.h) as the `GhosttyKit` module.
         .binaryTarget(
@@ -26,7 +30,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "SacredTerminal",
-            dependencies: ["GhosttyKit"],
+            dependencies: ["GhosttyKit", "SacredTerminalSupport"],
             path: "Sources/SacredTerminal",
             resources: [.copy("Resources/Icons"), .copy("Resources/AppIcon.png")],
             linkerSettings: [
@@ -45,7 +49,13 @@ let package = Package(
         ),
         .executableTarget(
             name: "sacred-cli",
+            dependencies: ["SacredTerminalSupport"],
             path: "Sources/sacred-cli"
+        ),
+        .testTarget(
+            name: "SacredTerminalIntegrationTests",
+            dependencies: ["SacredTerminalSupport"],
+            path: "Tests/SacredTerminalIntegrationTests"
         ),
     ]
 )

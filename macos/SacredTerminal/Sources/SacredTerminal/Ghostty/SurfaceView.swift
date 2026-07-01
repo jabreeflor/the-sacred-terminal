@@ -6,6 +6,7 @@
 
 import AppKit
 import GhosttyKit
+import SacredTerminalSupport
 
 final class SurfaceView: NSView {
     private var ghostty: GhosttySurface?
@@ -39,8 +40,10 @@ final class SurfaceView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil, ghostty == nil else { return }
+        guard !SacredTerminalRuntime.shouldDisableGhosttySurfaces else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, self.window != nil, self.ghostty == nil else { return }
+            guard !SacredTerminalRuntime.shouldDisableGhosttySurfaces else { return }
             self.ghostty = GhosttySurface(view: self, argv: self.argv, directory: self.directory)
             self.ghostty?.setContentScale(self.window?.backingScaleFactor ?? 2.0)
             self.updateSurfaceSize()

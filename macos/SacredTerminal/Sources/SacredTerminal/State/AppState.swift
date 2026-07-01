@@ -235,14 +235,37 @@ final class AppState {
 
     private func apply(_ s: AppSessionSnapshot) {
         projects = s.projects
-        activeSessionID = s.activeSessionID ?? s.projects.first?.sessions.first?.id
+        normalizeRestoredState(activeSessionID: s.activeSessionID)
         sidebarOpen = s.sidebarOpen
         agentEnabled = Set(s.agentEnabled.isEmpty ? AgentKey.allCases : s.agentEnabled)
         pinnedAgents = s.pinnedAgents.isEmpty ? Agents.defaultPinned : s.pinnedAgents
         agentSettings = s.agentSettings
         appearance = s.appearance
         git = s.git
-        IDGen.bump(past: projects.flatMap { p in p.sessions.flatMap { [$0.id] + $0.panes.map(\.id) } })
+        IDGen.bump(past: projects.flatMap { p in
+            [p.id] + p.sessions.flatMap { [$0.id] + $0.panes.map(\.id) }
+        })
+    }
+
+    private func normalizeRestoredState(activeSessionID restoredActiveSessionID: String?) {
+        for project in projects {
+            for session in project.sessions {
+                if session.panes.isEmpty {
+                    session.panes = [Pane(title: Agents.def(session.agent).name,
+                                          kind: session.agent == .shell ? .shell : .agent)]
+                }
+                if !session.panes.contains(where: { $0.id == session.activePaneID }) {
+                    session.activePaneID = session.panes[0].id
+                }
+            }
+        }
+
+        let sessionIDs = Set(projects.flatMap { $0.sessions.map(\.id) })
+        if let restoredActiveSessionID, sessionIDs.contains(restoredActiveSessionID) {
+            activeSessionID = restoredActiveSessionID
+        } else {
+            activeSessionID = allSessions.first?.session.id
+        }
     }
 
 }

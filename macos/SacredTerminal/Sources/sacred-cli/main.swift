@@ -16,22 +16,14 @@
 
 import Foundation
 import Darwin
+import SacredTerminalSupport
 
 // MARK: - Socket path
 
 /// The on-disk path of the app's control socket. Must match
 /// `SocketServer.socketPath()`: <Application Support>/SacredTerminal/control.sock.
 func controlSocketPath() -> String {
-    let fm = FileManager.default
-    let base = (try? fm.url(for: .applicationSupportDirectory,
-                            in: .userDomainMask,
-                            appropriateFor: nil,
-                            create: false))
-        ?? URL(fileURLWithPath: NSTemporaryDirectory())
-    return base
-        .appendingPathComponent("SacredTerminal", isDirectory: true)
-        .appendingPathComponent("control.sock")
-        .path
+    SacredTerminalRuntime.controlSocketURL.path
 }
 
 // MARK: - Errors
@@ -106,7 +98,9 @@ final class ControlConnection {
             let e = errno
             close(sock)
             // A stale socket file (app crashed) refuses the connection.
-            if e == ECONNREFUSED || e == ENOENT { throw CLIError.notRunning(path: path) }
+            if e == ECONNREFUSED || e == ENOENT || e == ENOTSOCK {
+                throw CLIError.notRunning(path: path)
+            }
             throw CLIError.connect(path: path, errno: e)
         }
 
@@ -283,6 +277,8 @@ func runStatus() throws {
 // MARK: - Entry point
 
 func main() {
+    signal(SIGPIPE, SIG_IGN)
+
     var args = Array(CommandLine.arguments.dropFirst())
     guard let command = args.first else {
         print(usage)

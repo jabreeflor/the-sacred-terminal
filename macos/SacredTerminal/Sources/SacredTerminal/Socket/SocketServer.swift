@@ -12,6 +12,7 @@
 
 import Foundation
 import Darwin
+import SacredTerminalSupport
 
 /// Newline-delimited JSON control server over an AF_UNIX SOCK_STREAM socket.
 final class SocketServer {
@@ -22,15 +23,7 @@ final class SocketServer {
     /// Lives under Application Support so it survives between launches and is
     /// per-user. AF_UNIX paths are limited (~104 bytes) so we keep it short.
     static func socketPath() -> String {
-        let fm = FileManager.default
-        let base = (try? fm.url(for: .applicationSupportDirectory,
-                                in: .userDomainMask,
-                                appropriateFor: nil,
-                                create: true))
-            ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        let dir = base.appendingPathComponent("SacredTerminal", isDirectory: true)
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("control.sock").path
+        SacredTerminalRuntime.controlSocketURL.path
     }
 
     // MARK: - State
@@ -55,6 +48,7 @@ final class SocketServer {
         case bind(errno: Int32, path: String)
         case listen(errno: Int32)
         case pathTooLong(path: String)
+        case appSupportDirectory(path: String, underlying: Error)
 
         var description: String {
             switch self {
@@ -62,12 +56,21 @@ final class SocketServer {
             case .bind(let e, let p):  return "bind(\(p)) failed: \(String(cString: strerror(e)))"
             case .listen(let e):       return "listen() failed: \(String(cString: strerror(e)))"
             case .pathTooLong(let p):  return "socket path too long for sockaddr_un: \(p)"
+            case .appSupportDirectory(let p, let error):
+                return "could not create app support directory \(p): \(error)"
             }
         }
     }
 
     /// Bind, listen, and start accepting connections on a background queue.
     func start() throws {
+        do {
+            try SacredTerminalRuntime.ensureAppSupportDirectory()
+        } catch {
+            throw SocketError.appSupportDirectory(path: SacredTerminalRuntime.appSupportDirectory.path,
+                                                  underlying: error)
+        }
+
         // A fresh socket can't bind to an existing path — remove a stale one.
         unlink(path)
 
@@ -142,6 +145,13 @@ final class SocketServer {
                 if errno == EINTR { continue }
                 return
             }
+            let flags = fcntl(clientFD, F_GETFL, 0)
+            if flags >= 0 {
+                _ = fcntl(clientFD, F_SETFL, flags & ~O_NONBLOCK)
+            }
+            var noSigPipe: Int32 = 1
+            _ = setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE,
+                           &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
             queue.async { [weak self] in self?.serve(clientFD) }
         }
     }

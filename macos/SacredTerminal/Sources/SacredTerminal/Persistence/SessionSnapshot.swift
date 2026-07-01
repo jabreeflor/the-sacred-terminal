@@ -1,4 +1,5 @@
 import Foundation
+import SacredTerminalSupport
 
 /// Full workspace + settings snapshot, persisted so layout and sessions restore
 /// across restarts — cmux's `AppSessionSnapshot` model (spec §10, §11).
@@ -14,16 +15,8 @@ struct AppSessionSnapshot: Codable {
 }
 
 enum Persistence {
-    private static var fileURL: URL {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        let base = support.appendingPathComponent("SacredTerminal", isDirectory: true)
-        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return base.appendingPathComponent("session.json")
-    }
-
     static func load() -> AppSessionSnapshot? {
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        guard let data = try? Data(contentsOf: SacredTerminalRuntime.sessionFileURL) else { return nil }
         return try? JSONDecoder().decode(AppSessionSnapshot.self, from: data)
     }
 
@@ -31,6 +24,7 @@ enum Persistence {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(snapshot) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        guard (try? SacredTerminalRuntime.ensureAppSupportDirectory()) != nil else { return }
+        try? data.write(to: SacredTerminalRuntime.sessionFileURL, options: .atomic)
     }
 }
