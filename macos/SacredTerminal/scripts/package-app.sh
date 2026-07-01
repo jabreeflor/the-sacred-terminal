@@ -18,6 +18,11 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/SacredTerminal"
 cp "$ROOT/packaging/Info.plist" "$APP/Contents/Info.plist"
 
+# App icon (transparent-corner squircle; see Resources/AppIcon.png).
+if [ -f "$ROOT/packaging/AppIcon.icns" ]; then
+  cp "$ROOT/packaging/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+fi
+
 # Bundle the GhosttyKit framework next to the binary.
 if [ -d "$ROOT/vendor/GhosttyKit.xcframework" ]; then
   mkdir -p "$APP/Contents/Frameworks"

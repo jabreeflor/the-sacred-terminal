@@ -35,21 +35,28 @@ final class BrowserPanelController: NSViewController, WKNavigationDelegate, NSTe
         let root = NSView()
         root.translatesAutoresizingMaskIntoConstraints = false
         root.wantsLayer = true
-        root.layer?.backgroundColor = Theme.chromeBg.cgColor
+        root.layer?.backgroundColor = Theme.panelBg.cgColor   // mock .browser-pane #0e0e11
         self.view = root
 
-        // --- Toolbar (dark, panelBg) ---
+        // Left seam (mock .browser-pane border-left rgba(255,255,255,.08)).
+        let leftSeam = NSView()
+        leftSeam.translatesAutoresizingMaskIntoConstraints = false
+        leftSeam.wantsLayer = true
+        leftSeam.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.08).cgColor
+        root.addSubview(leftSeam)
+
+        // --- Toolbar (mock .browser-toolbar #131316) ---
         let toolbar = NSView()
         toolbar.translatesAutoresizingMaskIntoConstraints = false
         toolbar.wantsLayer = true
-        toolbar.layer?.backgroundColor = Theme.panelBg.cgColor
+        toolbar.layer?.backgroundColor = Theme.titlebarBg.cgColor
         root.addSubview(toolbar)
 
         // Bottom hairline separating the toolbar from the web content.
         let separator = NSView()
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.wantsLayer = true
-        separator.layer?.backgroundColor = Theme.border.cgColor
+        separator.layer?.backgroundColor = Theme.hairlineSoft.cgColor   // #222228
         toolbar.addSubview(separator)
 
         backButton = makeToolButton(symbol: "chevron.left", fallback: "‹", action: #selector(goBack))
@@ -57,15 +64,29 @@ final class BrowserPanelController: NSViewController, WKNavigationDelegate, NSTe
         reloadButton = makeToolButton(symbol: "arrow.clockwise", fallback: "⟳", action: #selector(reload))
         let closeButton = makeToolButton(symbol: "xmark", fallback: "✕", action: #selector(closeBrowser))
 
+        // URL box: a styled pill (globe + editable field) — mock .browser-url.
+        let urlBox = NSView()
+        urlBox.translatesAutoresizingMaskIntoConstraints = false
+        urlBox.wantsLayer = true
+        urlBox.layer?.cornerRadius = 7
+        urlBox.layer?.borderWidth = 1
+        urlBox.layer?.borderColor = Theme.pickerLine.cgColor       // #2a2a30
+        urlBox.layer?.backgroundColor = Theme.browserUrlBg.cgColor // #0d0d10
+
+        let globe = NSImageView()
+        globe.translatesAutoresizingMaskIntoConstraints = false
+        globe.image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+        globe.contentTintColor = Theme.textFaint
+        globe.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
+        urlBox.addSubview(globe)
+
         urlField = NSTextField()
         urlField.translatesAutoresizingMaskIntoConstraints = false
         urlField.stringValue = initialURL
         urlField.font = Theme.monoSmall
         urlField.textColor = Theme.text
-        urlField.backgroundColor = Theme.chromeBg
-        urlField.drawsBackground = true
+        urlField.drawsBackground = false
         urlField.isBordered = false
-        urlField.bezelStyle = .roundedBezel
         urlField.focusRingType = .none
         urlField.lineBreakMode = .byTruncatingTail
         urlField.cell?.usesSingleLineMode = true
@@ -75,11 +96,8 @@ final class BrowserPanelController: NSViewController, WKNavigationDelegate, NSTe
         urlField.target = self
         urlField.action = #selector(urlSubmitted)
         urlField.delegate = self
-        urlField.wantsLayer = true
-        urlField.layer?.cornerRadius = 5
-        urlField.layer?.borderWidth = 1
-        urlField.layer?.borderColor = Theme.border.cgColor
-        toolbar.addSubview(urlField)
+        urlBox.addSubview(urlField)
+        toolbar.addSubview(urlBox)
 
         let nav = NSStackView(views: [backButton, forwardButton, reloadButton])
         nav.translatesAutoresizingMaskIntoConstraints = false
@@ -94,14 +112,19 @@ final class BrowserPanelController: NSViewController, WKNavigationDelegate, NSTe
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.navigationDelegate = self
         webView.wantsLayer = true
-        webView.layer?.backgroundColor = Theme.terminalBg.cgColor
+        webView.layer?.backgroundColor = NSColor.white.cgColor   // mock .browser-frame #fff
         root.addSubview(webView)
 
         NSLayoutConstraint.activate([
+            leftSeam.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            leftSeam.topAnchor.constraint(equalTo: root.topAnchor),
+            leftSeam.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            leftSeam.widthAnchor.constraint(equalToConstant: 1),
+
             toolbar.topAnchor.constraint(equalTo: root.topAnchor),
             toolbar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             toolbar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            toolbar.heightAnchor.constraint(equalToConstant: 38),
+            toolbar.heightAnchor.constraint(equalToConstant: 36),
 
             separator.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor),
             separator.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor),
@@ -111,16 +134,25 @@ final class BrowserPanelController: NSViewController, WKNavigationDelegate, NSTe
             nav.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: 8),
             nav.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
 
-            urlField.leadingAnchor.constraint(equalTo: nav.trailingAnchor, constant: 8),
-            urlField.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
-            urlField.heightAnchor.constraint(equalToConstant: 24),
+            urlBox.leadingAnchor.constraint(equalTo: nav.trailingAnchor, constant: 6),
+            urlBox.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
+            urlBox.heightAnchor.constraint(equalToConstant: 28),
 
-            closeButton.leadingAnchor.constraint(equalTo: urlField.trailingAnchor, constant: 8),
+            globe.leadingAnchor.constraint(equalTo: urlBox.leadingAnchor, constant: 10),
+            globe.centerYAnchor.constraint(equalTo: urlBox.centerYAnchor),
+            globe.widthAnchor.constraint(equalToConstant: 12),
+            globe.heightAnchor.constraint(equalToConstant: 12),
+
+            urlField.leadingAnchor.constraint(equalTo: globe.trailingAnchor, constant: 6),
+            urlField.trailingAnchor.constraint(equalTo: urlBox.trailingAnchor, constant: -8),
+            urlField.centerYAnchor.constraint(equalTo: urlBox.centerYAnchor),
+
+            closeButton.leadingAnchor.constraint(equalTo: urlBox.trailingAnchor, constant: 6),
             closeButton.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -8),
             closeButton.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
 
             webView.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
-            webView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            webView.leadingAnchor.constraint(equalTo: leftSeam.trailingAnchor),
             webView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             webView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
@@ -156,7 +188,7 @@ final class BrowserPanelController: NSViewController, WKNavigationDelegate, NSTe
         button.layer?.cornerRadius = 4
         NSLayoutConstraint.activate([
             button.widthAnchor.constraint(equalToConstant: 26),
-            button.heightAnchor.constraint(equalToConstant: 24),
+            button.heightAnchor.constraint(equalToConstant: 26),
         ])
         return button
     }

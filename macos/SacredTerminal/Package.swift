@@ -28,7 +28,7 @@ let package = Package(
             name: "SacredTerminal",
             dependencies: ["GhosttyKit"],
             path: "Sources/SacredTerminal",
-            resources: [.copy("Resources/Icons")],
+            resources: [.copy("Resources/Icons"), .copy("Resources/AppIcon.png")],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Metal"),

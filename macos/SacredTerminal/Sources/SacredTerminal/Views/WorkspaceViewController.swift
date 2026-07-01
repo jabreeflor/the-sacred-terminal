@@ -1,7 +1,8 @@
 import AppKit
 
-/// The right pane: the active session's Ghostty-style tab bar, terminal area
-/// (with optional split + browser), and the message input row (spec §5, §6, §12).
+/// The right pane: the active session's Ghostty-style tab bar and terminal area
+/// (with optional split + browser). The embedded Ghostty surface IS the input —
+/// there is no separate composer row (spec §5, §6, §12).
 ///
 /// Critical performance contract: each pane's `SurfaceView` is cached by `pane.id`
 /// so a `.sacredStateChanged` rebuild reuses the live libghostty surface instead of
@@ -41,9 +42,6 @@ final class WorkspaceViewController: NSViewController {
     private var browserController: BrowserPanelController?
     private var browserSessionID: String?
 
-    // The message input field for the active session.
-    private var inputField: NSTextField?
-
     // MARK: - View
 
     override func loadView() {
@@ -73,9 +71,8 @@ final class WorkspaceViewController: NSViewController {
         // a plain NSView, so `removeFromSuperview()` here is harmless.
         for host in hosts.values { host.removeFromSuperview() }
 
-        // Drop the rest of the chrome (tab bar, splits, input, browser view).
+        // Drop the rest of the chrome (tab bar, splits, browser view).
         view.subviews.forEach { $0.removeFromSuperview() }
-        inputField = nil
 
         guard let ctx else {
             tearDownAllHosts()
@@ -97,9 +94,8 @@ final class WorkspaceViewController: NSViewController {
 
         let tabBar = buildTabBar(project: project, session: session)
         let terminalArea = buildTerminalArea(project: project, session: session)
-        let inputRow = buildInputRow(session: session)
 
-        for v in [tabBar, terminalArea, inputRow] {
+        for v in [tabBar, terminalArea] {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
         }
@@ -108,17 +104,13 @@ final class WorkspaceViewController: NSViewController {
             tabBar.topAnchor.constraint(equalTo: view.topAnchor),
             tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tabBar.heightAnchor.constraint(equalToConstant: 36),
+            tabBar.heightAnchor.constraint(equalToConstant: 32),
 
+            // The Ghostty surface is the input, so the terminal fills to the bottom.
             terminalArea.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
             terminalArea.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             terminalArea.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-
-            inputRow.topAnchor.constraint(equalTo: terminalArea.bottomAnchor),
-            inputRow.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            inputRow.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            inputRow.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            inputRow.heightAnchor.constraint(equalToConstant: 44),
+            terminalArea.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
         // Focus the active pane's surface so keystrokes land where the eye is.
@@ -130,22 +122,32 @@ final class WorkspaceViewController: NSViewController {
     // MARK: - Empty state
 
     private func buildEmptyState() {
+        let hasProjects = !AppState.shared.projects.isEmpty
+
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .centerX
-        stack.spacing = 14
+        stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let label = NSTextField(labelWithString: "No session open")
-        label.font = NSFont.systemFont(ofSize: 15, weight: .medium)
-        label.textColor = Theme.textDim
+        let title = NSTextField(labelWithString: hasProjects ? "No session open" : "No projects yet")
+        title.font = NSFont.systemFont(ofSize: 15, weight: .medium)
+        title.textColor = Theme.textDim
+        title.alignment = .center
 
-        let button = NSButton(title: "New session", target: self, action: #selector(openPicker))
-        button.bezelStyle = .rounded
-        button.contentTintColor = Theme.accent
+        let hint = NSTextField(labelWithString: hasProjects
+            ? "Hover a project and pick an agent, or press ⌘N."
+            : "Add a project folder to start running agents.")
+        hint.font = NSFont.systemFont(ofSize: 12)
+        hint.textColor = Theme.textFaint
+        hint.alignment = .center
 
-        stack.addArrangedSubview(label)
-        stack.addArrangedSubview(button)
+        let pill = makeAccentPill(hasProjects ? "+ New session" : "+ Add project")
+
+        stack.addArrangedSubview(title)
+        stack.addArrangedSubview(hint)
+        stack.setCustomSpacing(16, after: hint)
+        stack.addArrangedSubview(pill)
         view.addSubview(stack)
 
         NSLayoutConstraint.activate([
@@ -154,9 +156,47 @@ final class WorkspaceViewController: NSViewController {
         ])
     }
 
+    /// A flat accent pill button (mock `.empty .pill`).
+    private func makeAccentPill(_ title: String) -> NSButton {
+        let b = NSButton(title: title, target: self, action: #selector(openPicker))
+        b.translatesAutoresizingMaskIntoConstraints = false
+        b.isBordered = false
+        b.bezelStyle = .regularSquare
+        b.wantsLayer = true
+        b.layer?.backgroundColor = Theme.accent.cgColor
+        b.layer?.cornerRadius = 8
+        b.attributedTitle = NSAttributedString(string: title, attributes: [
+            .foregroundColor: NSColor.white,
+            .font: NSFont.systemFont(ofSize: 12.5, weight: .semibold)])
+        b.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        b.widthAnchor.constraint(greaterThanOrEqualToConstant: 132).isActive = true
+        return b
+    }
+
+    /// New-session affordance. With a project present, open the agent picker; with
+    /// none, let the user choose a real folder first, then pick an agent for it.
     @objc private func openPicker() {
-        guard let project = AppState.shared.projects.first else { return }
-        AgentPickerController.present(projectID: project.id, relativeTo: view)
+        if let project = AppState.shared.activeContext?.project ?? AppState.shared.projects.first {
+            AgentPickerController.present(projectID: project.id, relativeTo: view)
+        } else {
+            importFolderThenPick()
+        }
+    }
+
+    private func importFolderThenPick() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Add Project"
+        panel.message = "Choose a project folder for your agents"
+        panel.begin { [weak self] resp in
+            guard resp == .OK, let url = panel.url, let self else { return }
+            AppState.shared.addProject(name: url.lastPathComponent, path: url.path)
+            if let p = AppState.shared.projects.last {
+                AgentPickerController.present(projectID: p.id, relativeTo: self.view)
+            }
+        }
     }
 
     // MARK: - Tab bar (spec §6)
@@ -168,7 +208,7 @@ final class WorkspaceViewController: NSViewController {
 
         let hairline = NSView()
         hairline.wantsLayer = true
-        hairline.layer?.backgroundColor = Theme.border.cgColor
+        hairline.layer?.backgroundColor = Theme.hairlineSoft.cgColor   // mock #222228
         hairline.translatesAutoresizingMaskIntoConstraints = false
         bar.addSubview(hairline)
 
@@ -186,17 +226,18 @@ final class WorkspaceViewController: NSViewController {
         let actions = NSStackView()
         actions.orientation = .horizontal
         actions.alignment = .centerY
-        actions.spacing = 4
+        actions.spacing = 2   // mock `.term-tab-actions { gap: 2px }`
         actions.translatesAutoresizingMaskIntoConstraints = false
 
-        let splitRight = makeActionButton(symbol: "rectangle.righthalf.inset.filled",
-                                          fallback: "⇥", tip: "Split right (⌘D)",
+        // The mock's content header has split/split/new-tab actions only — outline
+        // rect+line glyphs (not filled SF Symbols). The session's working state is
+        // shown by the rail spinner, not a pill here.
+        let splitRight = makeActionButton(glyph: .splitRight, tip: "Split right (⌘D)",
                                           action: #selector(splitRightAction))
-        let splitDown = makeActionButton(symbol: "rectangle.bottomhalf.inset.filled",
-                                         fallback: "⤓", tip: "Split down (⌘⇧D)",
+        let splitDown = makeActionButton(glyph: .splitDown, tip: "Split down (⌘⇧D)",
                                          action: #selector(splitDownAction))
-        let newTab = makeActionButton(symbol: "plus", fallback: "+",
-                                      tip: "New tab (⌘T)", action: #selector(newTabAction))
+        let newTab = makeActionButton(glyph: .newTab, tip: "New tab (⌘T)",
+                                      action: #selector(newTabAction))
         actions.addArrangedSubview(splitRight)
         actions.addArrangedSubview(splitDown)
         actions.addArrangedSubview(newTab)
@@ -212,9 +253,9 @@ final class WorkspaceViewController: NSViewController {
 
             tabsStack.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 8),
             tabsStack.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            tabsStack.trailingAnchor.constraint(lessThanOrEqualTo: actions.leadingAnchor, constant: -8),
+            tabsStack.trailingAnchor.constraint(lessThanOrEqualTo: actions.leadingAnchor, constant: -4),
 
-            actions.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -8),
+            actions.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -6),
             actions.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
         ])
 
@@ -224,9 +265,17 @@ final class WorkspaceViewController: NSViewController {
     private func makeTab(session: Session, pane: Pane) -> NSView {
         let isActive = pane.id == session.activePaneID
         let tab = TabButton(sessionID: session.id, paneID: pane.id)
+        tab.isActiveTab = isActive
         tab.wantsLayer = true
         tab.layer?.cornerRadius = 6
-        tab.layer?.backgroundColor = (isActive ? Theme.hover : NSColor.clear).cgColor
+        // mock .term-tab.active { background: rgba(255,255,255,.06); border: 1px #2a2a30 }
+        if isActive {
+            tab.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
+            tab.layer?.borderWidth = 1
+            tab.layer?.borderColor = Theme.pickerLine.cgColor
+        } else {
+            tab.layer?.backgroundColor = NSColor.clear.cgColor
+        }
         tab.target = self
         tab.action = #selector(tabClicked(_:))
         tab.translatesAutoresizingMaskIntoConstraints = false
@@ -260,7 +309,7 @@ final class WorkspaceViewController: NSViewController {
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
             title.centerYAnchor.constraint(equalTo: tab.centerYAnchor),
 
-            tab.heightAnchor.constraint(equalToConstant: 26),
+            tab.heightAnchor.constraint(equalToConstant: 24),
             tab.widthAnchor.constraint(greaterThanOrEqualToConstant: 90),
             tab.widthAnchor.constraint(lessThanOrEqualToConstant: 220),
         ])
@@ -291,17 +340,12 @@ final class WorkspaceViewController: NSViewController {
         return pane.title.isEmpty ? "shell" : pane.title
     }
 
-    private func makeActionButton(symbol: String, fallback: String, tip: String,
-                                  action: Selector) -> NSButton {
-        let b: NSButton
-        if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: tip) {
-            b = NSButton(image: img, target: self, action: action)
-            b.contentTintColor = Theme.textDim
-        } else {
-            b = NSButton(title: fallback, target: self, action: action)
-        }
-        b.bezelStyle = .texturedRounded
-        b.isBordered = false
+    /// The mock's `.term-tab-actions` glyphs: stroked rounded rect + a divider line
+    /// (split right/down) and a plus (new tab).
+    enum ActionGlyph { case splitRight, splitDown, newTab }
+
+    private func makeActionButton(glyph: ActionGlyph, tip: String, action: Selector) -> NSButton {
+        let b = HoverIconButton(image: actionGlyph(glyph), target: self, action: action)
         b.toolTip = tip
         b.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -309,6 +353,40 @@ final class WorkspaceViewController: NSViewController {
             b.heightAnchor.constraint(equalToConstant: 24),
         ])
         return b
+    }
+
+    /// Draw the mock's outline icon (13×13) into a template image so contentTintColor
+    /// applies. Geometry matches the mock SVG (24-unit viewBox: rect x3 y4 w18 h16).
+    private func actionGlyph(_ kind: ActionGlyph) -> NSImage {
+        let img = NSImage(size: NSSize(width: 13, height: 13), flipped: false) { _ in
+            let s = 13.0 / 24.0
+            let lw: CGFloat = 1.5
+            NSColor.black.setStroke()
+            let box = NSRect(x: 3 * s, y: 4 * s, width: 18 * s, height: 16 * s)
+            let rect = NSBezierPath(roundedRect: box, xRadius: 2 * s, yRadius: 2 * s)
+            rect.lineWidth = lw
+            let line = NSBezierPath()
+            line.lineWidth = lw
+            line.lineCapStyle = .round
+            switch kind {
+            case .splitRight:
+                rect.stroke()
+                line.move(to: NSPoint(x: 12 * s, y: 4 * s)); line.line(to: NSPoint(x: 12 * s, y: 20 * s))
+            case .splitDown:
+                rect.stroke()
+                line.move(to: NSPoint(x: 3 * s, y: 12 * s)); line.line(to: NSPoint(x: 21 * s, y: 12 * s))
+            case .newTab:
+                // Plus made of two strokes (no surrounding rect).
+                line.move(to: NSPoint(x: 12 * s, y: 5 * s)); line.line(to: NSPoint(x: 12 * s, y: 19 * s))
+                let h = NSBezierPath(); h.lineWidth = lw; h.lineCapStyle = .round
+                h.move(to: NSPoint(x: 5 * s, y: 12 * s)); h.line(to: NSPoint(x: 19 * s, y: 12 * s))
+                h.stroke()
+            }
+            line.stroke()
+            return true
+        }
+        img.isTemplate = true
+        return img
     }
 
     // MARK: - Tab / action targets
@@ -347,7 +425,7 @@ final class WorkspaceViewController: NSViewController {
 
         if session.browserOpen {
             let browserView = browserPanelView(for: session)
-            let split = NSSplitView()
+            let split = SeamSplitView()
             split.isVertical = true            // side-by-side: terminal | browser
             split.dividerStyle = .thin
             split.translatesAutoresizingMaskIntoConstraints = false
@@ -355,6 +433,11 @@ final class WorkspaceViewController: NSViewController {
             split.addArrangedSubview(browserView)
             container.addSubview(split)
             pin(split, to: container)
+            // Mock: term-workspace ~48% / browser ~52% — a breakable ratio constraint
+            // (NSSplitView's setPosition timing is unreliable for the initial layout).
+            let ratio = panesView.widthAnchor.constraint(equalTo: split.widthAnchor, multiplier: 0.48)
+            ratio.priority = NSLayoutConstraint.Priority(700)
+            ratio.isActive = true
         } else {
             tearDownBrowser()
             container.addSubview(panesView)
@@ -364,25 +447,42 @@ final class WorkspaceViewController: NSViewController {
         return container
     }
 
-    /// Build the pane layout: a 2-pane split, or just the active pane.
+    /// Build the pane layout: a 2-pane split (each cell ringed when focused), or
+    /// just the active pane.
     private func buildPanes(project: Project, session: Session) -> NSView {
         if session.splitLayout != .none, session.panes.count >= 2 {
             let first = host(for: session.panes[0], project: project, session: session)
             let second = host(for: session.panes[1], project: project, session: session)
 
-            let split = NSSplitView()
+            let split = SeamSplitView()
             // horizontal layout => side-by-side (vertical divider);
             // vertical layout => stacked (horizontal divider).
             split.isVertical = (session.splitLayout == .horizontal)
             split.dividerStyle = .thin
             split.translatesAutoresizingMaskIntoConstraints = false
-            split.addArrangedSubview(first)
-            split.addArrangedSubview(second)
+            split.addArrangedSubview(focusCell(first, focused: session.panes[0].id == session.activePaneID))
+            split.addArrangedSubview(focusCell(second, focused: session.panes[1].id == session.activePaneID))
             return split
         } else {
             let active = session.activePane
             return host(for: active, project: project, session: session)
         }
+    }
+
+    /// Wrap a pane host in a cell that shows the mock's amber inset focus ring when
+    /// it's the active pane (mock `.term-cell.focused`).
+    private func focusCell(_ host: NSView, focused: Bool) -> NSView {
+        let cell = NSView()
+        cell.translatesAutoresizingMaskIntoConstraints = false
+        cell.wantsLayer = true
+        if focused {
+            cell.layer?.borderWidth = 1
+            cell.layer?.borderColor = Theme.sessionActive.withAlphaComponent(0.35).cgColor
+        }
+        host.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(host)
+        pin(host, to: cell)
+        return cell
     }
 
     /// Fetch (or lazily create) the cached `PaneHost` for a pane.
@@ -428,82 +528,6 @@ final class WorkspaceViewController: NSViewController {
         browserSessionID = nil
     }
 
-    // MARK: - Message input row (spec §6)
-
-    private func buildInputRow(session: Session) -> NSView {
-        let row = NSView()
-        row.wantsLayer = true
-        row.layer?.backgroundColor = Theme.panelBg.cgColor
-
-        let hairline = NSView()
-        hairline.wantsLayer = true
-        hairline.layer?.backgroundColor = Theme.border.cgColor
-        hairline.translatesAutoresizingMaskIntoConstraints = false
-        row.addSubview(hairline)
-
-        let activePane = session.activePane
-
-        let icon = NSImageView()
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        if activePane.kind == .agent, let img = Theme.agentImage(session.agent) {
-            icon.image = img
-        } else {
-            icon.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "shell")
-            icon.contentTintColor = Theme.textDim
-        }
-
-        let field = NSTextField()
-        field.translatesAutoresizingMaskIntoConstraints = false
-        field.isBordered = false
-        field.drawsBackground = false
-        field.focusRingType = .none
-        field.font = Theme.mono
-        field.textColor = Theme.text
-        field.delegate = self
-        field.target = self
-        field.action = #selector(submitMessage(_:))
-        let agentName = Agents.def(session.agent).name
-        field.placeholderString = activePane.kind == .shell
-            ? "type a command…"
-            : "message \(agentName)…"
-        inputField = field
-
-        row.addSubview(icon)
-        row.addSubview(field)
-
-        NSLayoutConstraint.activate([
-            hairline.leadingAnchor.constraint(equalTo: row.leadingAnchor),
-            hairline.trailingAnchor.constraint(equalTo: row.trailingAnchor),
-            hairline.topAnchor.constraint(equalTo: row.topAnchor),
-            hairline.heightAnchor.constraint(equalToConstant: 1),
-
-            icon.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 14),
-            icon.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 16),
-            icon.heightAnchor.constraint(equalToConstant: 16),
-
-            field.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
-            field.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -14),
-            field.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-        ])
-
-        return row
-    }
-
-    @objc private func submitMessage(_ sender: NSTextField) {
-        let text = sender.stringValue
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        guard let session = AppState.shared.activeContext?.session else { return }
-
-        // Write into the active pane's live surface, then record the message.
-        if let host = hosts[session.activePaneID] {
-            host.surface.send(text: text + "\n")
-        }
-        AppState.shared.send(to: session.id, message: text)
-        sender.stringValue = ""
-    }
-
     // MARK: - Host teardown
 
     private func tearDownAllHosts() {
@@ -528,26 +552,15 @@ final class WorkspaceViewController: NSViewController {
     deinit { NotificationCenter.default.removeObserver(self) }
 }
 
-// MARK: - NSTextFieldDelegate
-
-extension WorkspaceViewController: NSTextFieldDelegate {
-    func control(_ control: NSControl, textView: NSTextView,
-                 doCommandBy selector: Selector) -> Bool {
-        // Enter submits; everything else behaves normally.
-        if selector == #selector(NSResponder.insertNewline(_:)) {
-            if let field = control as? NSTextField { submitMessage(field) }
-            return true
-        }
-        return false
-    }
-}
-
 // MARK: - Lightweight controls carrying their pane identity
 
-/// A clickable tab that remembers which session/pane it represents.
+/// A clickable tab that remembers which session/pane it represents. Inactive tabs
+/// take the mock's `.term-tab:hover` background; the active tab keeps its styling.
 private final class TabButton: NSButton {
     let sessionID: String
     let paneID: String
+    var isActiveTab = false
+    private var tracking: NSTrackingArea?
     init(sessionID: String, paneID: String) {
         self.sessionID = sessionID
         self.paneID = paneID
@@ -557,6 +570,25 @@ private final class TabButton: NSButton {
         setButtonType(.momentaryChange)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let a = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect, .assumeInside], owner: self)
+        addTrackingArea(a); tracking = a
+    }
+    override func mouseEntered(with event: NSEvent) {
+        if !isActiveTab { layer?.backgroundColor = NSColor.white.withAlphaComponent(0.04).cgColor }
+    }
+    override func mouseExited(with event: NSEvent) {
+        if !isActiveTab { layer?.backgroundColor = NSColor.clear.cgColor }
+    }
+}
+
+/// An NSSplitView whose divider matches the mock's faint rgba(255,255,255,.06) seam.
+private final class SeamSplitView: NSSplitView {
+    override var dividerColor: NSColor { NSColor.white.withAlphaComponent(0.06) }
+    override var dividerThickness: CGFloat { 1 }
 }
 
 /// The per-tab close affordance.
@@ -578,4 +610,52 @@ private final class CloseButton: NSButton {
         toolTip = "Close tab (⌘W)"
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
+}
+
+/// A borderless icon button that reproduces the mock `.term-tab-actions button`:
+/// faint tint at rest, and on hover a rgba(255,255,255,.06) background + brighter
+/// tint.
+private final class HoverIconButton: NSButton {
+    private var tracking: NSTrackingArea?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        commonInit()
+    }
+    convenience init(image: NSImage, target: AnyObject?, action: Selector?) {
+        self.init(frame: .zero)
+        self.image = image
+        self.target = target
+        self.action = action
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
+
+    private func commonInit() {
+        isBordered = false
+        bezelStyle = .regularSquare
+        imagePosition = .imageOnly
+        title = ""
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        contentTintColor = Theme.textFaint
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let area = NSTrackingArea(rect: bounds,
+                                  options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect, .assumeInside],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        tracking = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
+        contentTintColor = Theme.text
+    }
+    override func mouseExited(with event: NSEvent) {
+        layer?.backgroundColor = NSColor.clear.cgColor
+        contentTintColor = Theme.textFaint
+    }
 }

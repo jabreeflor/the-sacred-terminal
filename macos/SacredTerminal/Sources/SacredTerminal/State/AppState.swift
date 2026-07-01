@@ -14,8 +14,23 @@ struct AgentSettings: Codable {
 struct AppearanceSettings: Codable {
     var ghosttyTheme: String = "catppuccin-frappe"   // imported from ~/.config/ghostty/config
     var railWidth: RailWidth = .standard
+    // Side-rail colors (app chrome only — the mock's Appearance pickers).
+    var railBg: String = "#0a0a0c"
+    var railFg: String = "#e6e6ea"
+    var sessionHighlight: String = "#fab387"
     enum RailWidth: String, Codable { case compact, standard, wide
         var points: CGFloat { switch self { case .compact: return 220; case .standard: return 252; case .wide: return 288 } }
+    }
+
+    init() {}
+    // Tolerant decode: fields added later default in instead of failing the load.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ghosttyTheme = try c.decodeIfPresent(String.self, forKey: .ghosttyTheme) ?? "catppuccin-frappe"
+        railWidth = try c.decodeIfPresent(RailWidth.self, forKey: .railWidth) ?? .standard
+        railBg = try c.decodeIfPresent(String.self, forKey: .railBg) ?? "#0a0a0c"
+        railFg = try c.decodeIfPresent(String.self, forKey: .railFg) ?? "#e6e6ea"
+        sessionHighlight = try c.decodeIfPresent(String.self, forKey: .sessionHighlight) ?? "#fab387"
     }
 }
 
@@ -26,6 +41,30 @@ struct GitSettings: Codable {
     var commitAttribution: Bool = false
     var keepMainUpdated: Bool = false
     var draftByDefault: Bool = false
+    // Source-control extras (the mock's Git tab).
+    var scGroupOrder: String = "changes"   // changes | staged | untracked
+    var showScAiActions: Bool = true
+    var customCommand: String = ""
+    var usePrTemplate: Bool = true
+    var generatePrOnOpen: Bool = false
+    var openPrAfterCreate: Bool = false
+
+    init() {}
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        branchPrefix = try c.decodeIfPresent(String.self, forKey: .branchPrefix) ?? "git"
+        customPrefix = try c.decodeIfPresent(String.self, forKey: .customPrefix) ?? ""
+        autoRenameBranch = try c.decodeIfPresent(Bool.self, forKey: .autoRenameBranch) ?? true
+        commitAttribution = try c.decodeIfPresent(Bool.self, forKey: .commitAttribution) ?? false
+        keepMainUpdated = try c.decodeIfPresent(Bool.self, forKey: .keepMainUpdated) ?? false
+        draftByDefault = try c.decodeIfPresent(Bool.self, forKey: .draftByDefault) ?? false
+        scGroupOrder = try c.decodeIfPresent(String.self, forKey: .scGroupOrder) ?? "changes"
+        showScAiActions = try c.decodeIfPresent(Bool.self, forKey: .showScAiActions) ?? true
+        customCommand = try c.decodeIfPresent(String.self, forKey: .customCommand) ?? ""
+        usePrTemplate = try c.decodeIfPresent(Bool.self, forKey: .usePrTemplate) ?? true
+        generatePrOnOpen = try c.decodeIfPresent(Bool.self, forKey: .generatePrOnOpen) ?? false
+        openPrAfterCreate = try c.decodeIfPresent(Bool.self, forKey: .openPrAfterCreate) ?? false
+    }
 }
 
 /// The single source of truth for the workspace tree + settings.
@@ -46,10 +85,9 @@ final class AppState {
     private init() {
         if let snapshot = Persistence.load() {
             apply(snapshot)
-        } else {
-            projects = AppState.seed()
-            activeSessionID = projects.first?.sessions.first?.id
         }
+        // No snapshot → start empty. The rail shows its empty state and the user
+        // adds real project folders via the rail "+" (or the empty-state pill).
     }
 
     // MARK: - Lookups
@@ -130,9 +168,10 @@ final class AppState {
 
     func split(_ sessionID: String, _ direction: SplitLayout) {
         guard let s = session(sessionID)?.session else { return }
-        if s.panes.count < 2 { s.panes.append(Pane(title: "shell", kind: .shell)) }
+        let added = s.panes.count < 2
+        if added { s.panes.append(Pane(title: "shell", kind: .shell)) }
         s.splitLayout = direction
-        s.activePaneID = s.panes[1].id
+        if added { s.activePaneID = s.panes[1].id }
         changed()
     }
 
@@ -203,25 +242,4 @@ final class AppState {
         IDGen.bump(past: projects.flatMap { p in p.sessions.flatMap { [$0.id] + $0.panes.map(\.id) } })
     }
 
-    // MARK: - Seed (real directories so surfaces open real shells)
-
-    private static func seed() -> [Project] {
-        let home = NSHomeDirectory()
-        let p0 = Project(name: "the-sacred-terminal", path: "\(home)/Developer/the-sacred-terminal", sessions: [
-            Session(agent: .claude, task: "Implement the spec on top of Ghostty", status: .working),
-            Session(agent: .shell, task: "zsh", status: .idle),
-        ])
-        let p1 = Project(name: "acme-storefront", path: "\(home)/Developer/acme-storefront", sessions: [
-            Session(agent: .codex, task: "Migrate test suite to vitest", status: .waiting),
-            Session(agent: .gemini, task: "Refactor checkout to server components", status: .done,
-                    browserOpen: true, browserURL: "http://localhost:5173"),
-        ])
-        let p2 = Project(name: "design-system", path: "\(home)/Developer/design-system", sessions: [
-            Session(agent: .cursor, task: "Add dark-mode tokens to Button", status: .idle),
-        ])
-        let p3 = Project(name: "home", path: home, collapsed: true, sessions: [
-            Session(agent: .shell, task: "zsh", status: .idle),
-        ])
-        return [p0, p1, p2, p3]
-    }
 }

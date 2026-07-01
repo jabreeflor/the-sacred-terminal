@@ -27,11 +27,27 @@ final class GhosttyApp {
         }
 
         // 2. Load configuration. Default files include ~/.config/ghostty/config,
-        //    so themes/fonts/colors come straight from the user's Ghostty setup
-        //    (spec §9; same as cmux).
-        config = ghostty_config_new()
-        ghostty_config_load_default_files(config)
-        ghostty_config_finalize(config)
+        //    so fonts/keybinds/etc. come from the user's Ghostty setup (spec §9).
+        // Use a local handle so the withCString closures don't capture `self`
+        // (the stored `config`/`app` members aren't initialized yet).
+        let cfg: ghostty_config_t = ghostty_config_new()
+        ghostty_config_load_default_files(cfg)
+        // Pin the app's design theme — Catppuccin Frappé (spec §9 / the mock) — ONLY
+        // when the user hasn't chosen a theme in their own Ghostty config. Loading it
+        // unconditionally after the user's files silently overrode their theme, which
+        // also contradicted Settings → Appearance ("imported from your Ghostty config").
+        // Now Frappé is just the default for users who haven't set one; a user theme
+        // wins. (`path` is a diagnostics label; withCString NUL-terminates it.)
+        if GhosttyApp.resolvedTheme().isAppDefault {
+            let overrides = "theme = catppuccin-frappe"
+            overrides.withCString { contents in
+                "sacred-terminal-defaults".withCString { path in
+                    ghostty_config_load_string(cfg, contents, UInt(overrides.utf8.count), path)
+                }
+            }
+        }
+        ghostty_config_finalize(cfg)
+        config = cfg
 
         // 3. Runtime config wires libghostty's callbacks back into AppKit.
         var runtime = ghostty_runtime_config_s()
@@ -58,6 +74,44 @@ final class GhosttyApp {
     /// Drive libghostty's event loop (call from a timer / display link).
     /// ghostty_app_tick returns void in the embedding API.
     func tick() { ghostty_app_tick(app) }
+
+    // MARK: - Theme resolution (Settings → Appearance)
+
+    /// The terminal theme actually in effect: the user's Ghostty `theme` if they set
+    /// one, otherwise the app's Catppuccin Frappé default. Static + cheap (just reads
+    /// the user's config files), so the Settings UI can call it without spinning up
+    /// libghostty. `isAppDefault` is true only when we're supplying Frappé ourselves.
+    static func resolvedTheme() -> (name: String, isAppDefault: Bool) {
+        if let userTheme = userConfiguredTheme() { return (userTheme, false) }
+        return ("catppuccin-frappe", true)
+    }
+
+    /// Scan the user's Ghostty config file(s) for an uncommented `theme` setting.
+    /// Returns its value (e.g. "nord", or "light:…,dark:…") or nil if none is set.
+    /// Mirrors Ghostty's default config locations on macOS; not a full parser (it does
+    /// not follow `config-file` includes), but it covers themes set in the main file.
+    private static func userConfiguredTheme() -> String? {
+        let home = NSHomeDirectory()
+        var paths: [String] = []
+        if let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"], !xdg.isEmpty {
+            paths.append("\(xdg)/ghostty/config")
+        }
+        paths.append("\(home)/.config/ghostty/config")
+        paths.append("\(home)/Library/Application Support/com.mitchellh.ghostty/config")
+
+        for path in paths {
+            guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+            for rawLine in contents.split(whereSeparator: \.isNewline) {
+                let line = rawLine.trimmingCharacters(in: .whitespaces)
+                if line.isEmpty || line.hasPrefix("#") { continue }
+                guard let eq = line.firstIndex(of: "=") else { continue }
+                guard line[..<eq].trimmingCharacters(in: .whitespaces) == "theme" else { continue }
+                let value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces)
+                if !value.isEmpty { return value }
+            }
+        }
+        return nil
+    }
 }
 
 /// One Ghostty surface == one terminal pane. libghostty runs the command in a
@@ -78,9 +132,13 @@ final class GhosttySurface {
         // implicit CGFloat→Double bridge doesn't fire through `??`, so convert.
         cfg.scale_factor = Double(view.window?.backingScaleFactor ?? 2.0)
 
-        // The command libghostty spawns in the PTY (the agent CLI or a shell),
-        // and the working directory (the project's path).
-        let command = argv.joined(separator: " ")
+        // The command libghostty spawns in the PTY (the agent CLI or a shell), and the
+        // working directory (the project's path). Resolve the executable to an absolute
+        // path against the (login-shell) PATH so agent CLIs under nvm / Homebrew /
+        // ~/.local/bin are found even when libghostty execs them directly.
+        var resolvedArgv = argv
+        if let exe = argv.first { resolvedArgv[0] = GhosttySurface.resolveExecutable(exe) }
+        let command = resolvedArgv.joined(separator: " ")
         directory.withCString { dir in
             cfg.working_directory = dir
             command.withCString { cmd in
@@ -91,6 +149,20 @@ final class GhosttySurface {
     }
 
     deinit { free() }
+
+    /// Resolve a bare command name to an absolute path against the current PATH
+    /// (set from the login shell at launch). Returns the input unchanged if it's
+    /// already absolute or can't be found (so the failure surfaces in the terminal).
+    static func resolveExecutable(_ name: String) -> String {
+        guard !name.hasPrefix("/") else { return name }
+        guard let pathEnv = getenv("PATH") else { return name }
+        let fm = FileManager.default
+        for dir in String(cString: pathEnv).split(separator: ":") where !dir.isEmpty {
+            let full = "\(dir)/\(name)"
+            if fm.isExecutableFile(atPath: full) { return full }
+        }
+        return name
+    }
 
     func free() {
         if let s = surface { ghostty_surface_free(s); surface = nil }

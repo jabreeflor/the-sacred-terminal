@@ -22,7 +22,23 @@ enum Theme {
     static let textFaint  = hex("#5b5b63")
     static let hover      = hex("#16161a")
     static let accent     = hex("#1d6ef5")
-    static let sessionActive = hex("#fab387")   // active session highlight
+    static let sessionActive = hex("#fab387")   // peach accent (status / pins)
+    // Active-session row — the mock's subtle peach fill + border (NOT a blue fill):
+    //   --session-active-bg: rgba(250,179,135,.06); --session-active-border: …,.45
+    static let sessionActiveBg     = sessionActive.withAlphaComponent(0.06)
+    static let sessionActiveBorder = sessionActive.withAlphaComponent(0.45)
+
+    // Live rail colors — driven by Settings → Appearance (so the color pickers
+    // actually re-theme the rail). Fall back to the defaults above.
+    static var railBgLive: NSColor { hex(AppState.shared.appearance.railBg) }
+    static var railFgLive: NSColor { hex(AppState.shared.appearance.railFg) }
+    static var sessionHighlightLive: NSColor { hex(AppState.shared.appearance.sessionHighlight) }
+    static var sessionActiveBgLive: NSColor { sessionHighlightLive.withAlphaComponent(0.06) }
+    static var sessionActiveBorderLive: NSColor { sessionHighlightLive.withAlphaComponent(0.45) }
+    static let pickerBg   = hex("#141417")      // floating panels (picker / settings / menus)
+    static let pickerLine = hex("#2a2a30")
+    static let hairlineSoft = hex("#222228")    // mock border-bottom for tab bars / toolbars
+    static let browserUrlBg = hex("#0d0d10")    // mock .browser-url field bg
     static let terminalBg = hex("#303446")      // Catppuccin Frappé bg (until surface paints)
 
     static let mono = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
