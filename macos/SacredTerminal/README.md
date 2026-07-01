@@ -36,6 +36,7 @@ Sources/SacredTerminal/
   Browser/BrowserPanelController.swift   integrated WKWebView pane
   Socket/SocketServer.swift              Unix-socket control API (à la cmux's TerminalController)
 Sources/sacred-cli/                      the `sacred` CLI that drives a running app over the socket
+Sources/sacred-mcp/                      stdio MCP server exposing app/UI actions as tools
 ```
 
 ## Build (on a Mac)
@@ -58,6 +59,34 @@ swift run SacredTerminal           # or: ./scripts/package-app.sh && open .build
 ```
 
 Open `Package.swift` in Xcode for a normal edit/run/debug/archive flow.
+
+## Stdio MCP
+
+`sacred-mcp` is a newline-delimited JSON-RPC MCP server over stdio. It does not mutate state directly;
+each tool call translates to the same Unix-socket command path that the app and `sacred` CLI use.
+
+```bash
+cd macos/SacredTerminal
+swift build --product sacred-mcp
+.build/debug/sacred-mcp
+```
+
+Configure an MCP client to launch the built executable while The Sacred Terminal is running. For
+isolated tests, set `SACRED_TERMINAL_APP_SUPPORT_DIR` so the MCP server and app use the same
+`control.sock`.
+
+Tool coverage mirrors the current UI interaction surface:
+
+| UI action | MCP tool |
+|---|---|
+| Read projects/sessions/panes/sidebar/browser state | `sacred_get_state` |
+| Add project | `sacred_add_project` |
+| Toggle/open/close side rail | `sacred_toggle_sidebar` |
+| Collapse/expand project | `sacred_toggle_project` |
+| Pre-open an agent session | `sacred_create_session` |
+| Focus/close/send/status a session | `sacred_focus_session`, `sacred_close_session`, `sacred_send_to_session`, `sacred_set_session_status` |
+| New tab, split, focus, or close panes | `sacred_add_pane`, `sacred_split_pane`, `sacred_focus_pane`, `sacred_close_pane` |
+| Toggle browser and set browser URL | `sacred_toggle_browser`, `sacred_set_browser_url` |
 
 ## Notes
 

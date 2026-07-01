@@ -238,6 +238,9 @@ final class SocketServer {
         case "status":
             return ["ok": true]
 
+        case "get-state":
+            return ["ok": true, "state": stateObject()]
+
         case "list-sessions":
             return ["ok": true, "sessions": listSessions()]
 
@@ -255,7 +258,104 @@ final class SocketServer {
             guard let agent = AgentKey(rawValue: agentRaw) else {
                 return ["ok": false, "error": "unknown agent \"\(agentRaw)\""]
             }
-            return newSession(projectID: projectID, agent: agent)
+            let worktree = obj["worktree"] as? Bool ?? false
+            return newSession(projectID: projectID, agent: agent, worktree: worktree)
+
+        case "add-project":
+            return addProject(obj)
+
+        case "toggle-sidebar":
+            AppState.shared.toggleSidebar()
+            return ["ok": true, "sidebarOpen": AppState.shared.sidebarOpen]
+
+        case "set-sidebar":
+            guard let open = obj["open"] as? Bool else {
+                return ["ok": false, "error": "set-sidebar requires boolean \"open\""]
+            }
+            AppState.shared.setSidebarOpen(open)
+            return ["ok": true, "sidebarOpen": AppState.shared.sidebarOpen]
+
+        case "toggle-project":
+            guard let id = obj["id"] as? String, !id.isEmpty else {
+                return ["ok": false, "error": "toggle-project requires \"id\""]
+            }
+            return toggleProject(id: id)
+
+        case "close-session":
+            guard let id = obj["id"] as? String, !id.isEmpty else {
+                return ["ok": false, "error": "close-session requires \"id\""]
+            }
+            return closeSession(id: id)
+
+        case "send":
+            guard let id = obj["id"] as? String, !id.isEmpty else {
+                return ["ok": false, "error": "send requires \"id\""]
+            }
+            guard let message = obj["message"] as? String else {
+                return ["ok": false, "error": "send requires \"message\""]
+            }
+            return sendMessage(id: id, message: message)
+
+        case "set-status":
+            guard let id = obj["id"] as? String, !id.isEmpty else {
+                return ["ok": false, "error": "set-status requires \"id\""]
+            }
+            guard let raw = obj["status"] as? String, let status = Status(rawValue: raw) else {
+                return ["ok": false, "error": "set-status requires status working|waiting|idle|done"]
+            }
+            return setStatus(id: id, status: status)
+
+        case "add-pane":
+            guard let id = obj["id"] as? String, !id.isEmpty else {
+                return ["ok": false, "error": "add-pane requires \"id\""]
+            }
+            let rawKind = (obj["kind"] as? String) ?? Pane.Kind.shell.rawValue
+            guard let kind = Pane.Kind(rawValue: rawKind) else {
+                return ["ok": false, "error": "unknown pane kind \"\(rawKind)\""]
+            }
+            return addPane(sessionID: id, kind: kind)
+
+        case "split-pane":
+            guard let id = (obj["id"] as? String) ?? AppState.shared.activeSessionID, !id.isEmpty else {
+                return ["ok": false, "error": "split-pane requires \"id\" or an active session"]
+            }
+            guard let direction = splitLayout(from: obj["direction"] as? String) else {
+                return ["ok": false, "error": "split-pane requires direction right|down|horizontal|vertical"]
+            }
+            return splitPane(sessionID: id, direction: direction)
+
+        case "focus-pane":
+            guard let id = obj["id"] as? String, !id.isEmpty else {
+                return ["ok": false, "error": "focus-pane requires \"id\""]
+            }
+            guard let paneID = obj["pane"] as? String, !paneID.isEmpty else {
+                return ["ok": false, "error": "focus-pane requires \"pane\""]
+            }
+            return focusPane(sessionID: id, paneID: paneID)
+
+        case "close-pane":
+            guard let id = obj["id"] as? String, !id.isEmpty else {
+                return ["ok": false, "error": "close-pane requires \"id\""]
+            }
+            guard let paneID = obj["pane"] as? String, !paneID.isEmpty else {
+                return ["ok": false, "error": "close-pane requires \"pane\""]
+            }
+            return closePane(sessionID: id, paneID: paneID)
+
+        case "toggle-browser":
+            guard let id = (obj["id"] as? String) ?? AppState.shared.activeSessionID, !id.isEmpty else {
+                return ["ok": false, "error": "toggle-browser requires \"id\" or an active session"]
+            }
+            return toggleBrowser(sessionID: id, force: obj["open"] as? Bool)
+
+        case "set-browser-url":
+            guard let id = obj["id"] as? String, !id.isEmpty else {
+                return ["ok": false, "error": "set-browser-url requires \"id\""]
+            }
+            guard let url = obj["url"] as? String, !url.isEmpty else {
+                return ["ok": false, "error": "set-browser-url requires \"url\""]
+            }
+            return setBrowserURL(sessionID: id, url: url)
 
         default:
             return ["ok": false, "error": "unknown cmd \"\(cmd)\""]
@@ -268,6 +368,7 @@ final class SocketServer {
         AppState.shared.allSessions.map { ctx in
             [
                 "id": ctx.session.id,
+                "projectID": ctx.project.id,
                 "project": ctx.project.name,
                 "agent": ctx.session.agent.rawValue,
                 "task": ctx.session.task,
@@ -285,16 +386,193 @@ final class SocketServer {
         return ["ok": true, "id": id]
     }
 
-    private func newSession(projectID: String, agent: AgentKey) -> [String: Any] {
+    private func newSession(projectID: String, agent: AgentKey, worktree: Bool) -> [String: Any] {
         guard AppState.shared.projects.contains(where: { $0.id == projectID }) else {
             return ["ok": false, "error": "no project \"\(projectID)\""]
         }
         guard let session = AppState.shared.createSession(projectID: projectID,
                                                           agent: agent,
-                                                          worktree: false) else {
+                                                          worktree: worktree) else {
             return ["ok": false, "error": "could not create session"]
         }
-        return ["ok": true, "id": session.id]
+        return ["ok": true, "id": session.id, "session": sessionObject(session)]
+    }
+
+    private func addProject(_ obj: [String: Any]) -> [String: Any] {
+        guard let path = (obj["path"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !path.isEmpty else {
+            return ["ok": false, "error": "add-project requires \"path\""]
+        }
+        let name = obj["name"] as? String ?? ""
+        let project = AppState.shared.addProject(name: name, path: path)
+        return ["ok": true, "id": project.id, "project": projectObject(project)]
+    }
+
+    private func toggleProject(id: String) -> [String: Any] {
+        guard let project = AppState.shared.projects.first(where: { $0.id == id }) else {
+            return ["ok": false, "error": "no project \"\(id)\""]
+        }
+        AppState.shared.toggleCollapse(id)
+        return ["ok": true, "id": id, "collapsed": project.collapsed]
+    }
+
+    private func closeSession(id: String) -> [String: Any] {
+        guard AppState.shared.session(id) != nil else {
+            return ["ok": false, "error": "no session \"\(id)\""]
+        }
+        AppState.shared.closeSession(id)
+        return ["ok": true, "id": id, "activeSessionID": AppState.shared.activeSessionID ?? NSNull()]
+    }
+
+    private func sendMessage(id: String, message: String) -> [String: Any] {
+        guard AppState.shared.session(id) != nil else {
+            return ["ok": false, "error": "no session \"\(id)\""]
+        }
+        AppState.shared.send(to: id, message: message)
+        guard let session = AppState.shared.session(id)?.session else {
+            return ["ok": false, "error": "no session \"\(id)\""]
+        }
+        return ["ok": true, "id": id, "session": sessionObject(session)]
+    }
+
+    private func setStatus(id: String, status: Status) -> [String: Any] {
+        guard AppState.shared.session(id) != nil else {
+            return ["ok": false, "error": "no session \"\(id)\""]
+        }
+        AppState.shared.setStatus(id, status)
+        return ["ok": true, "id": id, "status": status.rawValue]
+    }
+
+    private func addPane(sessionID: String, kind: Pane.Kind) -> [String: Any] {
+        guard AppState.shared.session(sessionID) != nil else {
+            return ["ok": false, "error": "no session \"\(sessionID)\""]
+        }
+        guard let pane = AppState.shared.addPane(sessionID, kind: kind) else {
+            return ["ok": false, "error": "could not add pane"]
+        }
+        return ["ok": true, "id": pane.id, "pane": paneObject(pane)]
+    }
+
+    private func splitPane(sessionID: String, direction: SplitLayout) -> [String: Any] {
+        guard AppState.shared.session(sessionID) != nil else {
+            return ["ok": false, "error": "no session \"\(sessionID)\""]
+        }
+        AppState.shared.split(sessionID, direction)
+        guard let session = AppState.shared.session(sessionID)?.session else {
+            return ["ok": false, "error": "no session \"\(sessionID)\""]
+        }
+        return ["ok": true, "id": sessionID, "session": sessionObject(session)]
+    }
+
+    private func focusPane(sessionID: String, paneID: String) -> [String: Any] {
+        guard let session = AppState.shared.session(sessionID)?.session else {
+            return ["ok": false, "error": "no session \"\(sessionID)\""]
+        }
+        guard session.panes.contains(where: { $0.id == paneID }) else {
+            return ["ok": false, "error": "no pane \"\(paneID)\""]
+        }
+        AppState.shared.setActivePane(sessionID, paneID)
+        return ["ok": true, "id": sessionID, "activePaneID": paneID]
+    }
+
+    private func closePane(sessionID: String, paneID: String) -> [String: Any] {
+        guard let session = AppState.shared.session(sessionID)?.session else {
+            return ["ok": false, "error": "no session \"\(sessionID)\""]
+        }
+        guard session.panes.contains(where: { $0.id == paneID }) else {
+            return ["ok": false, "error": "no pane \"\(paneID)\""]
+        }
+        guard session.panes.count > 1 else {
+            return ["ok": false, "error": "cannot close the only pane in session \"\(sessionID)\""]
+        }
+        AppState.shared.closePane(sessionID, paneID)
+        guard let updated = AppState.shared.session(sessionID)?.session else {
+            return ["ok": false, "error": "no session \"\(sessionID)\""]
+        }
+        return ["ok": true, "id": sessionID, "session": sessionObject(updated)]
+    }
+
+    private func toggleBrowser(sessionID: String, force: Bool?) -> [String: Any] {
+        guard AppState.shared.session(sessionID) != nil else {
+            return ["ok": false, "error": "no session \"\(sessionID)\""]
+        }
+        AppState.shared.toggleBrowser(sessionID, force: force)
+        guard let session = AppState.shared.session(sessionID)?.session else {
+            return ["ok": false, "error": "no session \"\(sessionID)\""]
+        }
+        return ["ok": true, "id": sessionID, "browserOpen": session.browserOpen]
+    }
+
+    private func setBrowserURL(sessionID: String, url: String) -> [String: Any] {
+        guard AppState.shared.session(sessionID) != nil else {
+            return ["ok": false, "error": "no session \"\(sessionID)\""]
+        }
+        AppState.shared.setBrowserURL(sessionID, url)
+        return ["ok": true, "id": sessionID, "browserURL": url]
+    }
+
+    private func splitLayout(from raw: String?) -> SplitLayout? {
+        switch raw?.lowercased() {
+        case "right", "horizontal": return .horizontal
+        case "down", "vertical": return .vertical
+        default: return nil
+        }
+    }
+
+    private func stateObject() -> [String: Any] {
+        let state = AppState.shared
+        return [
+            "activeSessionID": state.activeSessionID ?? NSNull(),
+            "sidebarOpen": state.sidebarOpen,
+            "agents": Agents.order.map(agentObject),
+            "projects": state.projects.map(projectObject),
+        ]
+    }
+
+    private func agentObject(_ key: AgentKey) -> [String: Any] {
+        let def = Agents.def(key)
+        return [
+            "key": key.rawValue,
+            "name": def.name,
+            "provider": def.provider,
+            "enabled": AppState.shared.agentEnabled.contains(key),
+            "pinned": AppState.shared.pinnedAgents.contains(key),
+        ]
+    }
+
+    private func projectObject(_ project: Project) -> [String: Any] {
+        [
+            "id": project.id,
+            "name": project.name,
+            "path": project.path,
+            "collapsed": project.collapsed,
+            "sessions": project.sessions.map(sessionObject),
+        ]
+    }
+
+    private func sessionObject(_ session: Session) -> [String: Any] {
+        [
+            "id": session.id,
+            "agent": session.agent.rawValue,
+            "task": session.task,
+            "status": session.status.rawValue,
+            "worktree": session.worktree,
+            "yolo": session.yolo,
+            "browserOpen": session.browserOpen,
+            "browserURL": session.browserURL,
+            "activePaneID": session.activePaneID,
+            "splitLayout": session.splitLayout.rawValue,
+            "panes": session.panes.map(paneObject),
+        ]
+    }
+
+    private func paneObject(_ pane: Pane) -> [String: Any] {
+        [
+            "id": pane.id,
+            "title": pane.title,
+            "kind": pane.kind.rawValue,
+            "started": pane.started,
+        ]
     }
 
     // MARK: - Helpers

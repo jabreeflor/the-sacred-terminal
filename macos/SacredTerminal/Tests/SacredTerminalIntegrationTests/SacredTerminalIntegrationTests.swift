@@ -119,6 +119,89 @@ final class SacredTerminalIntegrationTests: XCTestCase {
         XCTAssertEqual(firstSession["activePaneID"] as? String, "s11")
     }
 
+    func testMCPListsToolsAndMapsCallsToAppState() throws {
+        let supportDir = try makeTempDirectory()
+        let projectDir = try makeTempDirectory(prefix: "st-e2e-mcp-project")
+        try writeFixtureSnapshot(supportDir: supportDir, projectPath: projectDir)
+
+        let app = try launchApp(supportDir: supportDir)
+        defer { app.terminate() }
+
+        let responses = try runSacredMCP([
+            [
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": [
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": [:],
+                    "clientInfo": ["name": "SacredTerminalIntegrationTests", "version": "1.0"],
+                ],
+            ],
+            [
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized",
+            ],
+            [
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/list",
+                "params": [:],
+            ],
+            [
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": [
+                    "name": "sacred_create_session",
+                    "arguments": ["project_id": "s99", "agent": "shell"],
+                ],
+            ],
+            [
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": [
+                    "name": "sacred_focus_session",
+                    "arguments": ["session_id": "s10"],
+                ],
+            ],
+            [
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/call",
+                "params": [
+                    "name": "sacred_toggle_browser",
+                    "arguments": ["session_id": "s10", "open": true],
+                ],
+            ],
+        ], supportDir: supportDir)
+
+        let initialize = try mcpResponse(responses, id: 1)
+        let initializeResult = try XCTUnwrap(initialize["result"] as? [String: Any])
+        XCTAssertEqual(initializeResult["protocolVersion"] as? String, "2025-03-26")
+
+        let toolsList = try mcpResponse(responses, id: 2)
+        let toolsResult = try XCTUnwrap(toolsList["result"] as? [String: Any])
+        let toolNames = try XCTUnwrap(toolsResult["tools"] as? [[String: Any]]).compactMap { $0["name"] as? String }
+        XCTAssertTrue(toolNames.contains("sacred_create_session"))
+        XCTAssertTrue(toolNames.contains("sacred_toggle_browser"))
+
+        for id in [3, 4, 5] {
+            let call = try mcpResponse(responses, id: id)
+            let result = try XCTUnwrap(call["result"] as? [String: Any])
+            XCTAssertEqual(result["isError"] as? Bool, false, "MCP call \(id) failed: \(result)")
+        }
+
+        let snapshot = try fixtureSnapshot(supportDir: supportDir)
+        XCTAssertEqual(snapshot["activeSessionID"] as? String, "s10")
+        let projects = try XCTUnwrap(snapshot["projects"] as? [[String: Any]])
+        let sessions = try XCTUnwrap(projects.first?["sessions"] as? [[String: Any]])
+        XCTAssertTrue(sessions.contains(where: { ($0["id"] as? String) == "s100" }))
+        let firstSession = try XCTUnwrap(sessions.first(where: { ($0["id"] as? String) == "s10" }))
+        XCTAssertEqual(firstSession["browserOpen"] as? Bool, true)
+    }
+
     func testE2ESocketStartupFailureExitsAppWithDiagnostic() throws {
         let longName = "st-e2e-long-" + String(repeating: "x", count: 92)
         let supportDir = URL(fileURLWithPath: "/tmp").appendingPathComponent(longName, isDirectory: true)
@@ -221,6 +304,63 @@ final class SacredTerminalIntegrationTests: XCTestCase {
                                 SacredTerminalRuntime.appSupportDirectoryEnv: supportDir.path,
                             ],
                             timeout: 10)
+    }
+
+    private func runSacredMCP(_ messages: [[String: Any]], supportDir: URL) throws -> [[String: Any]] {
+        let process = Process()
+        process.executableURL = try Self.mcpExecutableURL()
+        process.currentDirectoryURL = Self.packageRoot
+        process.environment = Self.mergedEnvironment([
+            SacredTerminalRuntime.appSupportDirectoryEnv: supportDir.path,
+        ])
+
+        let stdin = Pipe()
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardInput = stdin
+        process.standardOutput = stdout
+        process.standardError = stderr
+
+        try process.run()
+
+        for message in messages {
+            var data = try JSONSerialization.data(withJSONObject: message)
+            data.append(0x0A)
+            stdin.fileHandleForWriting.write(data)
+        }
+        stdin.fileHandleForWriting.closeFile()
+
+        let deadline = Date().addingTimeInterval(10)
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        if process.isRunning {
+            process.terminate()
+            Thread.sleep(forTimeInterval: 0.3)
+            if process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
+            process.waitUntilExit()
+            throw IntegrationTestError.processTimedOut("sacred-mcp timed out")
+        }
+
+        process.waitUntilExit()
+        let stdoutText = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let stderrText = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        guard process.terminationStatus == 0 else {
+            throw IntegrationTestError.processFailed("sacred-mcp exited \(process.terminationStatus): \(stderrText)")
+        }
+        XCTAssertEqual(stderrText, "")
+
+        return try stdoutText
+            .split(separator: "\n")
+            .map { line in
+                let data = Data(line.utf8)
+                guard let response = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    throw IntegrationTestError.processFailed("MCP response was not an object: \(line)")
+                }
+                return response
+            }
     }
 
     private func launchApp(supportDir: URL,
@@ -448,6 +588,18 @@ final class SacredTerminalIntegrationTests: XCTestCase {
     private func fixtureSnapshot(supportDir: URL) throws -> [String: Any] {
         let snapshotData = try Data(contentsOf: supportDir.appendingPathComponent("session.json"))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: snapshotData) as? [String: Any])
+    }
+
+    private func mcpResponse(_ responses: [[String: Any]], id: Int) throws -> [String: Any] {
+        try XCTUnwrap(responses.first { response in
+            if let value = response["id"] as? Int {
+                return value == id
+            }
+            if let value = response["id"] as? NSNumber {
+                return value.intValue == id
+            }
+            return false
+        }, "Missing MCP response id \(id). Responses: \(responses)")
     }
 
     private func rawSocketJSON(socketPath: String, object: [String: Any]) throws -> [String: Any] {
@@ -678,6 +830,7 @@ final class SacredTerminalIntegrationTests: XCTestCase {
         guard !didBuildProducts else { return }
 
         _ = try productURL(named: "sacred")
+        _ = try productURL(named: "sacred-mcp")
         _ = try productURL(named: "SacredTerminal")
 
         didBuildProducts = true
@@ -689,6 +842,10 @@ final class SacredTerminalIntegrationTests: XCTestCase {
 
     private static func appExecutableURL() throws -> URL {
         try productURL(named: "SacredTerminal")
+    }
+
+    private static func mcpExecutableURL() throws -> URL {
+        try productURL(named: "sacred-mcp")
     }
 
     private static func productURL(named name: String) throws -> URL {

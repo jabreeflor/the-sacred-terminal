@@ -110,16 +110,23 @@ final class AppState {
 
     func setActive(_ id: String) { activeSessionID = id; changed() }
     func toggleSidebar() { sidebarOpen.toggle(); changed() }
+    func setSidebarOpen(_ open: Bool) {
+        guard sidebarOpen != open else { return }
+        sidebarOpen = open
+        changed()
+    }
 
     func toggleCollapse(_ projectID: String) {
         projects.first(where: { $0.id == projectID })?.collapsed.toggle(); changed()
     }
 
-    func addProject(name: String, path: String) {
+    @discardableResult
+    func addProject(name: String, path: String) -> Project {
         let clean = name.trimmingCharacters(in: .whitespaces)
         let p = Project(name: clean.isEmpty ? (path as NSString).lastPathComponent : clean,
                         path: path.trimmingCharacters(in: .whitespaces))
         projects.append(p); changed()
+        return p
     }
 
     @discardableResult
@@ -157,13 +164,15 @@ final class AppState {
 
     // panes / splits
 
-    func addPane(_ sessionID: String, kind: Pane.Kind = .shell) {
-        guard let s = session(sessionID)?.session else { return }
+    @discardableResult
+    func addPane(_ sessionID: String, kind: Pane.Kind = .shell) -> Pane? {
+        guard let s = session(sessionID)?.session else { return nil }
         let pane = Pane(title: kind == .shell ? "shell" : Agents.def(s.agent).name, kind: kind)
         s.panes.append(pane)
         s.activePaneID = pane.id
         s.splitLayout = .none
         changed()
+        return pane
     }
 
     func split(_ sessionID: String, _ direction: SplitLayout) {

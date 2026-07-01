@@ -3,7 +3,7 @@
 A **native macOS** terminal workspace organized around **projects and agents**, not terminal tabs —
 modeled on [cmux](https://github.com/manaflow-ai/cmux) and built **on top of Ghostty**.
 
-cmux-style collapsible rail · folder-tree projects · pre-open sessions by agent (Claude Code, Codex, Gemini, …) · terminal tabs + splits · "always running" menu-bar monitor · integrated browser · Ghostty theming · socket/CLI control.
+cmux-style collapsible rail · folder-tree projects · pre-open sessions by agent (Claude Code, Codex, Gemini, …) · terminal tabs + splits · "always running" menu-bar monitor · integrated browser · Ghostty theming · socket/CLI/MCP control.
 
 ## The app
 

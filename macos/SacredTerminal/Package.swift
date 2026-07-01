@@ -16,6 +16,7 @@ let package = Package(
     products: [
         .executable(name: "SacredTerminal", targets: ["SacredTerminal"]),
         .executable(name: "sacred", targets: ["sacred-cli"]),
+        .executable(name: "sacred-mcp", targets: ["sacred-mcp"]),
     ],
     targets: [
         .target(
@@ -51,6 +52,11 @@ let package = Package(
             name: "sacred-cli",
             dependencies: ["SacredTerminalSupport"],
             path: "Sources/sacred-cli"
+        ),
+        .executableTarget(
+            name: "sacred-mcp",
+            dependencies: ["SacredTerminalSupport"],
+            path: "Sources/sacred-mcp"
         ),
         .testTarget(
             name: "SacredTerminalIntegrationTests",
