@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Sacred Terminal · prototype</title>
+<title>FriendSlop · prototype</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -336,6 +336,39 @@
   .term .c6{color:var(--g-6)} .term .c7{color:var(--g-7)}
   .term .dim{color:var(--g-8)} .term .b{font-weight:700}
   .term .orange{color:#fab387} .term .fg{color:var(--g-fg)}
+
+  /* Gemini CLI — POC monochromatic terminal */
+  .main.agent-gemini-active { background: #000; }
+  .term-workspace.agent-gemini,
+  .term-workspace.agent-gemini .term-cell,
+  .term-workspace.agent-gemini .term {
+    background: #000; color: #fff;
+  }
+  .term-workspace.agent-gemini .term-tabs {
+    background: #0a0a0a; border-bottom-color: #1a1a1a;
+  }
+  .term-workspace.agent-gemini .term .dim { color: #888; }
+  .term-workspace.agent-gemini .term .cli-box {
+    display: block; border: 1px solid rgba(255,255,255,.85);
+    padding: 16px 20px; margin-top: 6px; line-height: 1.65;
+    max-width: 52em;
+  }
+  .term-workspace.agent-gemini .term .gemini-logo {
+    display: block; margin: 10px 0 6px; font-size: 12px; line-height: 1.15;
+    letter-spacing: 0; white-space: pre;
+  }
+  .term-workspace.agent-gemini .term-input { display: none; }
+  .term-workspace.agent-gemini .term-cell.focused .term,
+  .term-workspace.agent-gemini .term:focus {
+    outline: 1px solid rgba(255,255,255,.28); outline-offset: -1px;
+  }
+  .term-workspace.agent-gemini .gemini-hint {
+    position: absolute; left: 16px; bottom: 14px;
+    font-size: 11px; color: #666; pointer-events: none;
+  }
+  .term-tab .tab-icon {
+    display: inline-flex; align-items: center; flex: 0 0 auto;
+  }
 
   .cursor {
     display: inline-block; width: 8px; height: 16px;
@@ -1388,32 +1421,18 @@ let uid = 1;
 const nid = () => 's' + (uid++);
 
 function seed() {
+  var geminiId = nid();
   return {
     sidebarOpen: true,
-    activeId: null,
+    activeId: geminiId,
     agentEnabled: null,
     pinnedAgents: null,
     agentSettings: null,
     appearanceSettings: null,
     gitSettings: defaultGitSettings(),
     projects: [
-      { id: 'p0', name: 'orchestrator', path: '~/Dev/orchestrator', collapsed: false, sessions: [
-        { id: nid(), agent: 'cursor', task: 'Loop over issues and implement…', status: 'idle' },
-      ]},
-      { id: 'p1', name: 'acme-storefront', path: '~/Dev/acme-storefront', collapsed: false, sessions: [
-        { id: nid(), agent: 'gemini', task: 'Refactor checkout to server components', status: 'working' },
-        { id: nid(), agent: 'codex',  task: 'migrate test suite to vitest', status: 'idle' },
-      ]},
-      { id: 'p2', name: 'design-system', path: '~/Dev/design-system', collapsed: false, sessions: [
-        { id: nid(), agent: 'claude', task: 'Add dark-mode tokens to Button', status: 'working', browserOpen: true, browserUrl: 'http://localhost:6006' },
-      ]},
-      { id: 'p3', name: 'marketing-site', path: '~/Dev/marketing-site', collapsed: false, sessions: [
-        { id: nid(), agent: 'gemini', task: 'Tighten hero spacing + glass nav', status: 'done', browserOpen: true, browserUrl: 'http://localhost:5173' },
-        { id: nid(), agent: 'claude', task: 'Generate Storybook docs for tokens', status: 'idle' },
-      ]},
-      { id: 'p4', name: 'portfolio-2026', path: '~/Dev/portfolio-2026', collapsed: true, sessions: [
-        { id: nid(), agent: 'codex', task: 'bump deps + fix type errors', status: 'waiting' },
-        { id: nid(), agent: 'claude', task: 'Wire up Plausible analytics', status: 'idle' },
+      { id: 'p0', name: 'FriendSlop', path: '~/Dev/FriendSlop', collapsed: false, sessions: [
+        { id: geminiId, agent: 'gemini', task: 'New Gemini session', status: 'waiting', geminiAuthIndex: 0 },
       ]},
     ],
   };
@@ -1446,7 +1465,7 @@ function defaultAppearanceSettings() {
     railBg: '#0a0a0c',
     railFg: '#e6e6ea',
     railWidth: 'default',
-    sessionHighlight: '#fab387',
+    sessionHighlight: '#a6a6ae',
   };
 }
 
@@ -1602,18 +1621,18 @@ function findDefaultActive() {
   for (var i = 0; i < state.projects.length; i++) {
     var p = state.projects[i];
     for (var j = 0; j < p.sessions.length; j++) {
-      if (p.name === 'design-system' && p.sessions[j].agent === 'claude') return p.sessions[j].id;
+      if (p.sessions[j].agent === 'gemini' && p.sessions[j].task === 'New Gemini session') return p.sessions[j].id;
     }
   }
   return state.projects[0] && state.projects[0].sessions[0] && state.projects[0].sessions[0].id || null;
 }
 
 function save() {
-  try { localStorage.setItem('cmux-proto', JSON.stringify(Object.assign({}, state, { _uid: uid }))); } catch (e) {}
+  try { localStorage.setItem('friendslop-proto-v1', JSON.stringify(Object.assign({}, state, { _uid: uid }))); } catch (e) {}
 }
 function load() {
   try {
-    const raw = localStorage.getItem('cmux-proto');
+    const raw = localStorage.getItem('friendslop-proto-v1');
     if (!raw) return null;
     const d = JSON.parse(raw);
     uid = d._uid || 50;
@@ -1627,6 +1646,10 @@ function load() {
               (p.name === 'marketing-site' && s.agent === 'gemini');
           }
           ensureSessionPanes(s);
+          if (s.agent === 'gemini') {
+            if (s.geminiAuthIndex == null) s.geminiAuthIndex = 0;
+            if (s.geminiAuthChoice == null && s.status === 'working') s.status = 'waiting';
+          }
         });
       });
     }
@@ -1703,14 +1726,50 @@ function paneBanner(session, project, pane) {
   return banner(session, project);
 }
 
+function ensureGeminiSession(session) {
+  if (session.agent !== 'gemini') return;
+  if (session.geminiAuthIndex == null) session.geminiAuthIndex = 0;
+}
+
+function handleGeminiKeydown(e, session) {
+  if (session.agent !== 'gemini' || session.geminiAuthChoice != null) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    session.geminiAuthIndex = Math.min(2, (session.geminiAuthIndex || 0) + 1);
+    session.status = 'waiting';
+    save();
+    render();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    session.geminiAuthIndex = Math.max(0, (session.geminiAuthIndex || 0) - 1);
+    session.status = 'waiting';
+    save();
+    render();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    session.geminiAuthChoice = session.geminiAuthIndex || 0;
+    session.status = session.geminiAuthChoice === 0 ? 'waiting' : 'working';
+    save();
+    render();
+  }
+}
+
 function buildTermCell(session, project, pane, focused) {
+  ensureGeminiSession(session);
   var a = AGENTS[session.agent] || AGENTS.shell;
   var cell = el('div', 'term-cell' + (focused ? ' focused' : ''));
   cell.dataset.paneId = pane.id;
+  var isGeminiAgent = session.agent === 'gemini' && pane.kind !== 'shell';
   cell.onclick = function () {
     setActivePane(session, pane.id);
     save();
     renderMain();
+    if (isGeminiAgent) {
+      requestAnimationFrame(function () {
+        var t = cell.querySelector('.term');
+        if (t) t.focus();
+      });
+    }
   };
 
   var label = el('div', 'term-cell-label', pane.title);
@@ -1718,7 +1777,14 @@ function buildTermCell(session, project, pane, focused) {
 
   var term = el('div', 'term');
   term.innerHTML = paneBanner(session, project, pane);
+  if (isGeminiAgent && focused) {
+    term.tabIndex = 0;
+    term.onkeydown = function (e) { handleGeminiKeydown(e, session); };
+  }
   cell.appendChild(term);
+  if (isGeminiAgent && focused && session.geminiAuthChoice == null) {
+    cell.appendChild(el('div', 'gemini-hint', '↑↓ navigate · Enter select · click to focus'));
+  }
 
   var input = el('div', 'term-input');
   input.innerHTML = '<span class="ip">' + SacredIcons.sessionIcon(pane.kind === 'shell' ? 'shell' : session.agent, 14, session.status) + '</span>';
@@ -1753,14 +1819,15 @@ function buildTermCell(session, project, pane, focused) {
 
 function renderTermWorkspace(session, project) {
   ensureSessionPanes(session);
-  var wrap = el('div', 'term-workspace');
+  var wrap = el('div', 'term-workspace' + (session.agent === 'gemini' ? ' agent-gemini' : ''));
 
   var tabs = el('div', 'term-tabs');
   var tabList = el('div', 'term-tab-list');
   session.panes.forEach(function (pane) {
     var tab = el('button', 'term-tab' + (pane.id === session.activePaneId ? ' active' : ''));
     tab.type = 'button';
-    tab.innerHTML = '<span class="tab-title">' + escapeHtml(pane.title) + '</span>' +
+    var tabIcon = pane.kind !== 'shell' ? '<span class="tab-icon">' + agentIcon(session.agent, 12) + '</span>' : '';
+    tab.innerHTML = tabIcon + '<span class="tab-title">' + escapeHtml(pane.title) + '</span>' +
       (session.panes.length > 1 ? '<span class="tab-close" aria-hidden="true">×</span>' : '');
     tab.onclick = function (e) {
       if (e.target.classList.contains('tab-close')) {
@@ -1807,6 +1874,7 @@ function renderTermWorkspace(session, project) {
 
 function defaultBrowserUrl(project) {
   var urls = {
+    'FriendSlop': 'http://localhost:5173',
     'marketing-site': 'http://localhost:5173',
     'acme-storefront': 'http://localhost:3000',
     'design-system': 'http://localhost:6006',
@@ -1915,7 +1983,7 @@ function renderTitleSession(found) {
   bar.innerHTML =
     '<div class="title-crumb">' +
       '<span class="proj-name">' + escapeHtml(project.name) + '</span>' +
-      '<span class="sep">›</span>' +
+      '<span class="sep">&gt;</span>' +
       '<span class="sess-title">' + escapeHtml(session.task || 'untitled') + '</span>' +
     '</div>' +
     '<div class="title-actions">' +
@@ -1924,15 +1992,27 @@ function renderTitleSession(found) {
           '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/>' +
         '</svg>' +
       '</button>' +
+      '<button type="button" class="term-browser-btn" title="Split right (⌘D)" aria-label="Split right">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="20"/></svg>' +
+      '</button>' +
+      '<button type="button" class="term-browser-btn" id="titleNewSession" title="New session (⌘N)" aria-label="New session">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+      '</button>' +
       '<span class="branch">' + branchIcon() + ' main</span>' +
     '</div>';
-  bar.querySelector('.term-browser-btn').onclick = function () { toggleBrowser(); };
+  bar.querySelector('[title="Toggle browser (⌘⌥B)"]').onclick = function () { toggleBrowser(); };
+  var splitBtn = bar.querySelector('.title-actions .term-browser-btn[title="Split right (⌘D)"]');
+  if (splitBtn) splitBtn.onclick = function () { splitSession(session, 'right'); save(); renderMain(); };
+  var newBtn = bar.querySelector('#titleNewSession');
+  if (newBtn) newBtn.onclick = function () { openPicker(project.id, newBtn); };
 }
 
 function renderMain() {
   const main = $('#main');
   main.innerHTML = '';
+  main.className = 'main';
   const found = state.activeId && findSession(state.activeId);
+  if (found && found.session.agent === 'gemini') main.classList.add('agent-gemini-active');
   renderTitleSession(found);
 
   if (!found) {
@@ -1982,6 +2062,13 @@ function renderMain() {
   }
 
   main.appendChild(workspace);
+
+  if (session.agent === 'gemini') {
+    requestAnimationFrame(function () {
+      var term = main.querySelector('.term-cell.focused .term[tabindex="0"]');
+      if (term) term.focus();
+    });
+  }
 }
 
 function renderEmpty() {
@@ -2002,6 +2089,65 @@ function renderEmpty() {
 /* ============================================================
    FAUX TERMINAL BANNERS (Ghostty-styled per agent)
    ============================================================ */
+var GEMINI_ASCII = [
+  ' ██████╗ ███████╗███╗   ███╗██╗███╗   ██╗██╗',
+  '██╔════╝ ██╔════╝████╗ ████║██║████╗  ██║██║',
+  '██║  ███╗█████╗  ██╔████╔██║██║██╔██╗ ██║██║',
+  '██║   ██║██╔══╝  ██║╚██╔╝██║██║██║╚██╗██║██║',
+  '╚██████╔╝███████╗██║ ╚═╝ ██║██║██║ ╚████║██║',
+  ' ╚═════╝ ╚══════╝╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═╝',
+].join('\n');
+
+function geminiAuthOption(idx, label, selected) {
+  var bullet = selected ? '●' : ' ';
+  return '  ' + bullet + ' ' + (idx + 1) + '. ' + label;
+}
+
+function geminiBanner(s) {
+  var header =
+    '<span class="dim">Last login: Tue Jun 30 18:42:06 on ttys002</span>\n\n' +
+    '<span class="gemini-logo">' + escapeHtml(GEMINI_ASCII) + '</span>\n' +
+    'Gemini CLI v0.49.0\n\n';
+
+  if (s.geminiAuthChoice === 1) {
+    return header +
+      '<span class="cli-box">' +
+      '? Get started\n\n' +
+      'Enter your Gemini API key:\n\n' +
+      '  <span class="cursor"></span>\n\n' +
+      '<span class="dim">Get a key at https://aistudio.google.com/apikey</span>' +
+      '</span>';
+  }
+  if (s.geminiAuthChoice === 2) {
+    return header +
+      '<span class="cli-box">' +
+      '? Get started\n\n' +
+      'Vertex AI authentication\n\n' +
+      '  Project ID: <span class="cursor"></span>\n\n' +
+      '<span class="dim">Requires a Google Cloud project with Vertex AI enabled.</span>' +
+      '</span>';
+  }
+
+  var idx = s.geminiAuthIndex != null ? s.geminiAuthIndex : 0;
+  var menu =
+    '? Get started\n\n' +
+    'How would you like to authenticate for this project?\n\n' +
+    geminiAuthOption(0, 'Sign in with Google', idx === 0) + '\n' +
+    geminiAuthOption(1, 'Use Gemini API Key', idx === 1) + '\n' +
+    geminiAuthOption(2, 'Vertex AI', idx === 2) + '\n';
+
+  if (idx === 0) {
+    menu += '\n<span class="dim">Failed to sign in. Message: This client is no longer supported for Gemini Code Assist for individuals. To continue using Gemini, please migrate to the Antigravity suite of products: https://antigravity.google</span>\n';
+  }
+
+  menu +=
+    '\n(Use Enter to select)\n\n' +
+    'Terms of Service and Privacy Notice for Gemini CLI\n' +
+    'https://geminicli.com/docs/resources/tos-privacy/';
+
+  return header + '<span class="cli-box">' + menu + '</span>';
+}
+
 function banner(s, p) {
   const path = '<span class="dim">' + escapeHtml(p.path) + '</span>';
   if (s.agent === 'claude') {
@@ -2031,14 +2177,7 @@ function banner(s, p) {
       '<span class="c2">&rsaquo;</span> <span class="cursor"></span>';
   }
   if (s.agent === 'gemini') {
-    return agentIcon('gemini', 14) + ' <span class="c5 b">Gemini CLI</span>\n' +
-      '<span class="dim">  gemini-2.5-pro</span>\n' +
-      '  ' + path + '\n\n' +
-      '<span class="c6">✓</span> Refactored the checkout flow into server components.\n' +
-      '<span class="dim">  3 files changed · 84 insertions · 21 deletions</span>\n' +
-      '<span class="c4">  Turn complete in 59s.</span>\n' +
-      '<span class="dim">  browser snapshot → 12 refs · preview at localhost:5173</span>\n' +
-      '<span class="c5">&rsaquo;</span> <span class="cursor"></span>';
+    return geminiBanner(s);
   }
   // shell + others
   return '<span class="c2">' + escapeHtml(p.path.replace('~','')) + '</span> <span class="dim">on</span> <span class="c5">main</span>\n' +
