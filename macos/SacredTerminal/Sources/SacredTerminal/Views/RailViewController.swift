@@ -315,9 +315,10 @@ private final class ProjectRow: HoverView {
 
     // Route clicks: pill buttons fire their own actions; the rest toggles collapse.
     // The branch must NOT depend on hover/visibility-driven layout state — it keys
-    // off pill.alphaValue (set by hover) so it can't feed the tracking loop.
+    // off HoverView's tracked state so alpha animation timing can't turn a pill
+    // click into a row-collapse click while the pill is fading in.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        if pill.alphaValue > 0, let v = super.hitTest(point), v != self, v.isDescendant(of: pill) {
+        if isHovering, let v = super.hitTest(point), v != self, v.isDescendant(of: pill) {
             return v
         }
         return self
@@ -334,22 +335,6 @@ private final class ProjectRow: HoverView {
     override func hoverChanged(_ hovering: Bool) {
         pill.animator().alphaValue = hovering ? 1 : 0
         layer?.backgroundColor = hovering ? Theme.hover.cgColor : NSColor.clear.cgColor
-    }
-
-    // Creating a session rebuilds the rail, so this row is recreated *under* the
-    // cursor; `.assumeInside` suppresses the synthetic mouseEntered, which left the
-    // quick-pick pill hidden until the user moved out and back (so a second session
-    // seemed impossible to start). Re-derive hover from the real pointer once laid out.
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        guard window != nil else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self, let window = self.window else { return }
-            let pt = self.convert(window.mouseLocationOutsideOfEventStream, from: nil)
-            let inside = self.bounds.contains(pt)
-            self.pill.alphaValue = inside ? 1 : 0
-            self.layer?.backgroundColor = inside ? Theme.hover.cgColor : NSColor.clear.cgColor
-        }
     }
 }
 
@@ -418,7 +403,10 @@ private final class AgentPillButton: NSButton {
         title = ""
         wantsLayer = true
         layer?.cornerRadius = 12
-        toolTip = "New \(Agents.def(agent).name) session"
+        let label = "New \(Agents.def(agent).name) session"
+        toolTip = label
+        setAccessibilityLabel(label)
+        setAccessibilityIdentifier("quick-pick-\(agent.rawValue)")
         target = self
         action = #selector(fire)
 
@@ -453,12 +441,29 @@ private final class AgentPillButton: NSButton {
                                options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect, .assumeInside],
                                owner: self, userInfo: nil)
         addTrackingArea(a); tracking = a
+        syncHoverWithPointer()
     }
 
-    override func mouseEntered(with event: NSEvent) { setHover(true) }
-    override func mouseExited(with event: NSEvent) { setHover(false) }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        syncHoverWithPointer()
+    }
 
-    private func setHover(_ hovering: Bool) {
+    override func mouseEntered(with event: NSEvent) { applyHover(true) }
+    override func mouseExited(with event: NSEvent) { applyHover(false) }
+
+    private func syncHoverWithPointer() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window else {
+                self?.applyHover(false)
+                return
+            }
+            let point = self.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            self.applyHover(self.bounds.contains(point))
+        }
+    }
+
+    private func applyHover(_ hovering: Bool) {
         if let img = baseImage {
             image = AgentPillButton.resized(img, to: hovering ? AgentPillButton.hoverSize : AgentPillButton.restSize)
         } else {
@@ -481,6 +486,7 @@ private func pillIconButton(symbol: String, fallback: String, tooltip: String,
     b.bezelStyle = .regularSquare
     b.imagePosition = .imageOnly
     b.toolTip = tooltip
+    b.setAccessibilityLabel(tooltip)
     b.target = target
     b.action = action
     b.contentTintColor = Theme.textDim
@@ -577,12 +583,17 @@ private final class SessionRow: HoverView {
         closeButton.bezelStyle = .regularSquare
         closeButton.imagePosition = .imageOnly
         if let xmark = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close session") {
+            xmark.isTemplate = true
             closeButton.image = xmark
             closeButton.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
         } else {
             closeButton.title = "✕"
+            closeButton.imagePosition = .noImage
+            closeButton.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
         }
         closeButton.contentTintColor = Theme.textDim
+        closeButton.setAccessibilityLabel("Close session")
+        closeButton.setAccessibilityIdentifier("session-close-\(session.id)")
         closeButton.toolTip = "Close session"
         closeButton.target = self
         closeButton.action = #selector(close)
@@ -675,6 +686,7 @@ private final class FlippedView: NSView {
 /// A view that owns a tracking area and reports mouse enter/exit via `hoverChanged`.
 private class HoverView: NSView {
     private var tracking: NSTrackingArea?
+    private(set) var isHovering = false
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -688,11 +700,33 @@ private class HoverView: NSView {
         tracking = area
     }
 
-    override func mouseEntered(with event: NSEvent) { hoverChanged(true) }
-    override func mouseExited(with event: NSEvent) { hoverChanged(false) }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        syncHoverWithPointer()
+    }
+
+    override func mouseEntered(with event: NSEvent) { setHovering(true) }
+    override func mouseExited(with event: NSEvent) { setHovering(false) }
 
     /// Override to react to hover state.
     func hoverChanged(_ hovering: Bool) {}
+
+    private func syncHoverWithPointer() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window else {
+                self?.setHovering(false)
+                return
+            }
+            let point = self.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            self.setHovering(self.bounds.contains(point))
+        }
+    }
+
+    private func setHovering(_ hovering: Bool) {
+        guard isHovering != hovering else { return }
+        isHovering = hovering
+        hoverChanged(hovering)
+    }
 }
 
 /// A borderless icon button using an SF Symbol when available, else a glyph.
@@ -704,6 +738,7 @@ private func railIconButton(symbol: String, fallback: String, tooltip: String,
     b.bezelStyle = .regularSquare
     b.imagePosition = .imageOnly
     b.toolTip = tooltip
+    b.setAccessibilityLabel(tooltip)
     b.target = target
     b.action = action
     b.contentTintColor = Theme.textDim
