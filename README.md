@@ -29,5 +29,6 @@ swift run SacredTerminal
 ## Spec & design mock
 
 - **Spec:** [`docs/specs/spec.md`](docs/specs/spec.md)
+- **MCP setup:** [`docs/mcp/setup.md`](docs/mcp/setup.md)
 - The zero-build HTML design mock (the visual source of truth) is preserved in
   [`docs/mock-design/`](docs/mock-design/) — `index.html` (main window) and `menu-bar.html`.
