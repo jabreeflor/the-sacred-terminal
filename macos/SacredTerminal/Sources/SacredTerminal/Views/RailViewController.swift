@@ -326,23 +326,30 @@ private final class ProjectRow: HoverView {
     // collapse. Previously the whole row collapsed on any miss-click while the pill
     // was fading in, which made a second agent session feel impossible to open.
     override func hitTest(_ point: NSPoint) -> NSView? {
+        guard bounds.contains(point) else { return nil }
         if pill.acceptsHitTesting {
             if let hit = pill.hitTest(convert(point, to: pill)) {
                 return hit
             }
         }
-        if leftStack.bounds.contains(convert(point, to: leftStack)) {
+        if leftStack.frame.contains(point) {
             return self
         }
         return nil
     }
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func mouseDown(with event: NSEvent) {
+        toggleProject()
+    }
+
+    @objc private func toggleProject() {
         AppState.shared.toggleCollapse(project.id)
     }
 
     override func accessibilityPerformPress() -> Bool {
-        AppState.shared.toggleCollapse(project.id)
+        toggleProject()
         return true
     }
 
@@ -552,6 +559,7 @@ private final class SessionRow: HoverView {
     private let spinner = NSProgressIndicator()
     private let label = NSTextField(labelWithString: "")
     private let hintLabel = NSTextField(labelWithString: "")
+    private let activationButton = RowActivationButton()
     private let closeButton = NSButton()
 
     init(project: Project, session: Session, shortcut: Int?, active: Bool) {
@@ -606,6 +614,21 @@ private final class SessionRow: HoverView {
         hintLabel.alphaValue = 0.55
         hintLabel.stringValue = shortcut.map { "⌘\($0)" } ?? ""
 
+        // Native transparent hit target for the full row. Keeping this as an
+        // NSButton makes click and AXPress activation deterministic even though the
+        // row itself is a custom composite view.
+        activationButton.translatesAutoresizingMaskIntoConstraints = false
+        activationButton.isBordered = false
+        activationButton.bezelStyle = .regularSquare
+        activationButton.imagePosition = .noImage
+        activationButton.title = ""
+        activationButton.setButtonType(.momentaryChange)
+        activationButton.target = self
+        activationButton.action = #selector(activateSession)
+        activationButton.toolTip = "\(Agents.def(session.agent).name) session"
+        activationButton.setAccessibilityLabel("\(Agents.def(session.agent).name) session \(session.task)")
+        activationButton.setAccessibilityIdentifier("session-row-\(session.id)")
+
         // Close (×), revealed on hover. Use a TEMPLATE symbol — `contentTintColor`
         // tints images, not button title text, so a bare "×" title rendered in the
         // default (near-invisible on the dark rail) color.
@@ -630,17 +653,13 @@ private final class SessionRow: HoverView {
         closeButton.action = #selector(close)
         closeButton.isHidden = true
 
-        setAccessibilityElement(true)
-        setAccessibilityRole(.button)
-        setAccessibilityLabel("\(Agents.def(session.agent).name) session \(session.task)")
-        setAccessibilityIdentifier("session-row-\(session.id)")
-
         addSubview(box)
         box.addSubview(handle)
         box.addSubview(iconView)
         box.addSubview(spinner)
         box.addSubview(label)
         box.addSubview(hintLabel)
+        box.addSubview(activationButton)
         box.addSubview(closeButton)
 
         NSLayoutConstraint.activate([
@@ -668,6 +687,11 @@ private final class SessionRow: HoverView {
             hintLabel.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -8),
             hintLabel.centerYAnchor.constraint(equalTo: box.centerYAnchor),
 
+            activationButton.leadingAnchor.constraint(equalTo: box.leadingAnchor),
+            activationButton.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            activationButton.topAnchor.constraint(equalTo: box.topAnchor),
+            activationButton.bottomAnchor.constraint(equalTo: box.bottomAnchor),
+
             closeButton.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -5),
             closeButton.centerYAnchor.constraint(equalTo: box.centerYAnchor),
             closeButton.widthAnchor.constraint(equalToConstant: 18),
@@ -683,25 +707,32 @@ private final class SessionRow: HoverView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    // Close button gets its own clicks; the rest of the row activates. Resolve the hit
-    // via `super.hitTest` (coordinate-system-agnostic) and only route to the close
-    // button when that's what was actually hit — the previous manual conversion
-    // double-offset `point`, so the × missed for rows away from the superview origin.
+    // Close button gets its own clicks; the rest of the row activates.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        if !closeButton.isHidden, let hit = super.hitTest(point),
+        guard bounds.contains(point) else { return nil }
+        if !closeButton.isHidden, let hit = closeButton.hitTest(convert(point, to: closeButton)),
            hit == closeButton || hit.isDescendant(of: closeButton) {
             return hit
         }
-        return self
+        if let hit = activationButton.hitTest(convert(point, to: activationButton)) {
+            return hit
+        }
+        return super.hitTest(point)
     }
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func mouseDown(with event: NSEvent) {
-        AppState.shared.setActive(session.id)
+        activateSession()
     }
 
     override func accessibilityPerformPress() -> Bool {
-        AppState.shared.setActive(session.id)
+        activateSession()
         return true
+    }
+
+    @objc private func activateSession() {
+        AppState.shared.setActive(session.id)
     }
 
     @objc private func close() {
@@ -718,6 +749,14 @@ private final class SessionRow: HoverView {
 }
 
 // MARK: - Small reusable views
+
+private final class RowActivationButton: NSButton {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var focusRingType: NSFocusRingType {
+        get { .none }
+        set {}
+    }
+}
 
 /// A flipped view so subviews lay out from the top-left downward.
 private final class FlippedView: NSView {

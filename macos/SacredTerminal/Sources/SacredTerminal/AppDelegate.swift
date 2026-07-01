@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var socket: SocketServer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        signal(SIGPIPE, SIG_IGN)
+
         // A GUI app launched via Finder/`open` inherits a minimal PATH that omits the
         // user's shell additions (nvm, Homebrew, ~/.local/bin), so agent CLIs like
         // `gemini` / `claude` can't be found and their sessions die on launch. Import
@@ -37,9 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // corrections (see MainWindowController.ensureLaunchFrame) that defend the
         // Finder/`open` path, where LaunchServices can order the window in at 0×0
         // before its content size resolves.
-        let main = MainWindowController()
-        mainWindow = main
-        main.showWindow(nil)
+        ensureMainWindow()
         if !SacredTerminalRuntime.isE2EMode {
             NSApp.activate(ignoringOtherApps: true)
         }
@@ -67,8 +67,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Reopen the main window from the menu-bar (snap-back).
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        if !hasVisibleWindows { mainWindow?.showWindow(nil) }
+        if !hasVisibleWindows { ensureMainWindow() }
         return true
+    }
+
+    private func ensureMainWindow() {
+        if mainWindow?.window == nil {
+            mainWindow = MainWindowController()
+        }
+        mainWindow?.showWindow(nil)
+        mainWindow?.window?.makeKeyAndOrderFront(nil)
     }
 
     private func buildMenu() {

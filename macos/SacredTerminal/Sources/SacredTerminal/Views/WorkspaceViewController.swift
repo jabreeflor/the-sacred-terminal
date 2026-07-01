@@ -307,6 +307,7 @@ final class WorkspaceViewController: NSViewController {
         tab.translatesAutoresizingMaskIntoConstraints = false
         tab.setAccessibilityLabel("\(tabTitle(session: session, pane: pane)) tab")
         tab.setAccessibilityIdentifier("workspace-tab-\(pane.id)")
+        tab.setAccessibilityValue(isActive ? "selected" : "not selected")
 
         // Brand mark for an agent pane, terminal glyph for a shell.
         let icon = NSImageView()
@@ -605,6 +606,8 @@ private final class TabButton: NSButton {
         setButtonType(.momentaryChange)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()

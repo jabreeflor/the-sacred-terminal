@@ -110,6 +110,10 @@ final class MainWindowController: NSWindowController {
             let project = state.activeContext?.project ?? state.projects.first
             if let project, let window { AgentPickerController.present(projectID: project.id, in: window) }
             return true
+        case let key? where key.count == 1 && key >= "1" && key <= "9":
+            guard let index = Int(key), state.allSessions.indices.contains(index - 1) else { return false }
+            state.setActive(state.allSessions[index - 1].session.id)
+            return true
         default:
             return false
         }

@@ -142,7 +142,10 @@ final class SacredTerminalIntegrationTests: XCTestCase {
 
         let supportDir = try makeTempDirectory()
         let projectDir = try makeTempDirectory(prefix: "st-e2e-ui-project")
-        try writeFixtureSnapshot(supportDir: supportDir, projectPath: projectDir, collapsed: false)
+        try writeFixtureSnapshot(supportDir: supportDir,
+                                 projectPath: projectDir,
+                                 collapsed: false,
+                                 includeSecondSession: true)
 
         let app = try launchApp(supportDir: supportDir)
         defer { app.terminate() }
@@ -153,15 +156,40 @@ final class SacredTerminalIntegrationTests: XCTestCase {
         let browserToggle = try waitForAXElement(in: axApp, identifier: "titlebar-toggle-browser", timeout: 5)
         _ = try waitForAXElement(in: axApp, identifier: "project-row-s99", timeout: 5)
         _ = try waitForAXElement(in: axApp, identifier: "session-row-s10", timeout: 5)
+        let secondSession = try waitForAXElement(in: axApp, identifier: "session-row-s12", timeout: 5)
         _ = try waitForAXElement(in: axApp, identifier: "workspace-split-right", timeout: 5)
         _ = try waitForAXElement(in: axApp, identifier: "workspace-split-down", timeout: 5)
+
+        try pressAXElement(secondSession, identifier: "session-row-s12")
+        try waitUntil("second session became active from Accessibility press") {
+            try fixtureActiveSessionID(supportDir: supportDir) == "s12"
+        }
+        let firstSession = try waitForAXElement(in: axApp, identifier: "session-row-s10", timeout: 5)
+        try pressAXElement(firstSession, identifier: "session-row-s10")
+        try waitUntil("first session became active from Accessibility press") {
+            try fixtureActiveSessionID(supportDir: supportDir) == "s10"
+        }
 
         let newTab = try waitForAXElement(in: axApp, identifier: "workspace-new-tab", timeout: 5)
         try pressAXElement(newTab, identifier: "workspace-new-tab")
         try waitUntil("new tab persisted to the isolated fixture") {
             try fixturePaneIDs(supportDir: supportDir).count == 2
         }
+        try waitUntil("new tab became the active terminal pane") {
+            try fixtureActivePaneID(supportDir: supportDir) == "s100"
+        }
+        let firstTerminalTab = try waitForAXElement(in: axApp, identifier: "workspace-tab-s11", timeout: 5)
         _ = try waitForAXElement(in: axApp, identifier: "workspace-tab-s100", timeout: 5)
+
+        try pressAXElement(firstTerminalTab, identifier: "workspace-tab-s11")
+        try waitUntil("first terminal tab became active from Accessibility press") {
+            try fixtureActivePaneID(supportDir: supportDir) == "s11"
+        }
+        let newTerminalTab = try waitForAXElement(in: axApp, identifier: "workspace-tab-s100", timeout: 5)
+        try pressAXElement(newTerminalTab, identifier: "workspace-tab-s100")
+        try waitUntil("new terminal tab became active from Accessibility press") {
+            try fixtureActivePaneID(supportDir: supportDir) == "s100"
+        }
 
         try pressAXElement(browserToggle, identifier: "titlebar-toggle-browser")
         try waitUntil("browser open state persisted to the isolated fixture") {
@@ -255,8 +283,54 @@ final class SacredTerminalIntegrationTests: XCTestCase {
 
     private func writeFixtureSnapshot(supportDir: URL,
                                       projectPath: URL,
-                                      collapsed: Bool = true) throws {
+                                      collapsed: Bool = true,
+                                      includeSecondSession: Bool = false) throws {
         try FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
+
+        var sessions: [[String: Any]] = [
+            [
+                "id": "s10",
+                "agent": "shell",
+                "task": "zsh",
+                "status": "idle",
+                "worktree": false,
+                "yolo": false,
+                "browserOpen": false,
+                "browserURL": "http://localhost:3000",
+                "panes": [
+                    [
+                        "id": "s11",
+                        "title": "shell",
+                        "kind": "shell",
+                        "started": false,
+                    ],
+                ],
+                "activePaneID": "missing-pane",
+                "splitLayout": "none",
+            ],
+        ]
+        if includeSecondSession {
+            sessions.append([
+                "id": "s12",
+                "agent": "gemini",
+                "task": "New Gemini session",
+                "status": "working",
+                "worktree": false,
+                "yolo": false,
+                "browserOpen": false,
+                "browserURL": "http://localhost:3000",
+                "panes": [
+                    [
+                        "id": "s13",
+                        "title": "Gemini",
+                        "kind": "agent",
+                        "started": false,
+                    ],
+                ],
+                "activePaneID": "s13",
+                "splitLayout": "none",
+            ])
+        }
 
         let snapshot: [String: Any] = [
             "activeSessionID": "missing-session",
@@ -290,28 +364,7 @@ final class SacredTerminalIntegrationTests: XCTestCase {
                     "name": "Fixture Project",
                     "path": projectPath.path,
                     "collapsed": collapsed,
-                    "sessions": [
-                        [
-                            "id": "s10",
-                            "agent": "shell",
-                            "task": "zsh",
-                            "status": "idle",
-                            "worktree": false,
-                            "yolo": false,
-                            "browserOpen": false,
-                            "browserURL": "http://localhost:3000",
-                            "panes": [
-                                [
-                                    "id": "s11",
-                                    "title": "shell",
-                                    "kind": "shell",
-                                    "started": false,
-                                ],
-                            ],
-                            "activePaneID": "missing-pane",
-                            "splitLayout": "none",
-                        ],
-                    ],
+                    "sessions": sessions,
                 ],
             ],
             "sidebarOpen": true,
@@ -344,17 +397,31 @@ final class SacredTerminalIntegrationTests: XCTestCase {
         return panes.compactMap { $0["id"] as? String }
     }
 
+    private func fixtureActivePaneID(supportDir: URL) throws -> String {
+        let session = try fixtureSession(supportDir: supportDir)
+        return try XCTUnwrap(session["activePaneID"] as? String)
+    }
+
     private func fixtureBrowserOpen(supportDir: URL) throws -> Bool {
         let session = try fixtureSession(supportDir: supportDir)
         return try XCTUnwrap(session["browserOpen"] as? Bool)
     }
 
+    private func fixtureActiveSessionID(supportDir: URL) throws -> String {
+        let snapshot = try fixtureSnapshot(supportDir: supportDir)
+        return try XCTUnwrap(snapshot["activeSessionID"] as? String)
+    }
+
     private func fixtureSession(supportDir: URL) throws -> [String: Any] {
-        let snapshotData = try Data(contentsOf: supportDir.appendingPathComponent("session.json"))
-        let snapshot = try XCTUnwrap(JSONSerialization.jsonObject(with: snapshotData) as? [String: Any])
+        let snapshot = try fixtureSnapshot(supportDir: supportDir)
         let projects = try XCTUnwrap(snapshot["projects"] as? [[String: Any]])
         let sessions = try XCTUnwrap(projects.first?["sessions"] as? [[String: Any]])
         return try XCTUnwrap(sessions.first(where: { ($0["id"] as? String) == "s10" }))
+    }
+
+    private func fixtureSnapshot(supportDir: URL) throws -> [String: Any] {
+        let snapshotData = try Data(contentsOf: supportDir.appendingPathComponent("session.json"))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: snapshotData) as? [String: Any])
     }
 
     private func rawSocketJSON(socketPath: String, object: [String: Any]) throws -> [String: Any] {
