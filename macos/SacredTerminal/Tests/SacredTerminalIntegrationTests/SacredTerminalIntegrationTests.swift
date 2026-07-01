@@ -235,11 +235,13 @@ final class SacredTerminalIntegrationTests: XCTestCase {
                                             object: ["cmd": "ui-hit-test", "id": "session-row-s10"])
         XCTAssertEqual(firstRowHit["ok"] as? Bool, true)
         XCTAssertEqual(firstRowHit["matchesTarget"] as? Bool, true)
+        XCTAssertGreaterThan(try targetBoundsWidth(firstRowHit), 200)
 
         let secondRowHit = try rawSocketJSON(socketPath: socketPath,
                                              object: ["cmd": "ui-hit-test", "id": "session-row-s12"])
         XCTAssertEqual(secondRowHit["ok"] as? Bool, true)
         XCTAssertEqual(secondRowHit["matchesTarget"] as? Bool, true)
+        XCTAssertGreaterThan(try targetBoundsWidth(secondRowHit), 200)
 
         let smoke = try rawSocketJSON(socketPath: socketPath,
                                       object: ["cmd": "ui-smoke-session-tabs"])
@@ -631,6 +633,12 @@ final class SacredTerminalIntegrationTests: XCTestCase {
             }
             return false
         }, "Missing MCP response id \(id). Responses: \(responses)")
+    }
+
+    private func targetBoundsWidth(_ reply: [String: Any]) throws -> Double {
+        let target = try XCTUnwrap(reply["target"] as? [String: Any])
+        let bounds = try XCTUnwrap(target["bounds"] as? [String: Any])
+        return try XCTUnwrap(bounds["width"] as? Double)
     }
 
     private func rawSocketJSON(socketPath: String, object: [String: Any]) throws -> [String: Any] {

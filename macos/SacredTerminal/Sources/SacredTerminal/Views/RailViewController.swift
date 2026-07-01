@@ -64,10 +64,12 @@ final class RailViewController: NSViewController {
             documentView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
             documentView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
             documentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
 
             treeView.topAnchor.constraint(equalTo: documentView.topAnchor),
             treeView.leadingAnchor.constraint(equalTo: documentView.leadingAnchor),
             treeView.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
+            treeView.widthAnchor.constraint(equalTo: documentView.widthAnchor),
             treeView.bottomAnchor.constraint(equalTo: documentView.bottomAnchor),
             treeHeightConstraint,
         ])
@@ -804,6 +806,7 @@ private final class RailTreeView: NSView {
     }
 
     func addRow(_ row: NSView) {
+        row.translatesAutoresizingMaskIntoConstraints = true
         rows.append(row)
         addSubview(row)
         invalidateIntrinsicContentSize()
@@ -825,6 +828,8 @@ private final class RailTreeView: NSView {
         var y = edgeInsets.top
         for row in rows {
             row.frame = NSRect(x: edgeInsets.left, y: y, width: width, height: rowHeight)
+            row.needsLayout = true
+            row.layoutSubtreeIfNeeded()
             y += rowHeight + spacing
         }
     }
