@@ -234,6 +234,10 @@ final class SocketServer {
             return ["ok": false, "error": "missing \"cmd\""]
         }
 
+        if E2EUIDriver.canHandle(cmd) {
+            return E2EUIDriver.handle(command: cmd, object: obj)
+        }
+
         switch cmd {
         case "status":
             return ["ok": true]

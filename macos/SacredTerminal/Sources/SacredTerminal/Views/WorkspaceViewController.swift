@@ -316,6 +316,7 @@ final class WorkspaceViewController: NSViewController {
         tab.action = #selector(tabClicked(_:))
         tab.translatesAutoresizingMaskIntoConstraints = false
         tab.setAccessibilityLabel("\(tabTitle(session: session, pane: pane)) tab")
+        tab.identifier = NSUserInterfaceItemIdentifier("workspace-tab-\(pane.id)")
         tab.setAccessibilityIdentifier("workspace-tab-\(pane.id)")
         tab.setAccessibilityValue(isActive ? "selected" : "not selected")
 
@@ -391,6 +392,7 @@ final class WorkspaceViewController: NSViewController {
         let b = HoverIconButton(image: actionGlyph(glyph), target: self, action: action)
         b.toolTip = tip
         b.setAccessibilityLabel(label)
+        b.identifier = NSUserInterfaceItemIdentifier(identifier)
         b.setAccessibilityIdentifier(identifier)
         b.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -667,6 +669,7 @@ private final class CloseButton: NSButton {
         }
         toolTip = "Close tab (⌘W)"
         setAccessibilityLabel("Close tab")
+        identifier = NSUserInterfaceItemIdentifier("workspace-tab-close-\(paneID)")
         setAccessibilityIdentifier("workspace-tab-close-\(paneID)")
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }

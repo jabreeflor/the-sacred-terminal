@@ -136,6 +136,37 @@ final class SacredTerminalIntegrationTests: XCTestCase {
                       "Expected AF_UNIX path-length diagnostic in stderr; got: \(result.stderr)")
     }
 
+    func testE2EUIDriverSwitchesRailSessionsAndTerminalTabs() throws {
+        let supportDir = try makeTempDirectory()
+        let projectDir = try makeTempDirectory(prefix: "st-e2e-ui-driver-project")
+        try writeFixtureSnapshot(supportDir: supportDir,
+                                 projectPath: projectDir,
+                                 collapsed: false,
+                                 includeSecondSession: true)
+
+        let app = try launchApp(supportDir: supportDir)
+        defer { app.terminate() }
+
+        let socketPath = supportDir.appendingPathComponent("control.sock").path
+        let firstRowHit = try rawSocketJSON(socketPath: socketPath,
+                                            object: ["cmd": "ui-hit-test", "id": "session-row-s10"])
+        XCTAssertEqual(firstRowHit["ok"] as? Bool, true)
+        XCTAssertEqual(firstRowHit["matchesTarget"] as? Bool, true)
+
+        let secondRowHit = try rawSocketJSON(socketPath: socketPath,
+                                             object: ["cmd": "ui-hit-test", "id": "session-row-s12"])
+        XCTAssertEqual(secondRowHit["ok"] as? Bool, true)
+        XCTAssertEqual(secondRowHit["matchesTarget"] as? Bool, true)
+
+        let smoke = try rawSocketJSON(socketPath: socketPath,
+                                      object: ["cmd": "ui-smoke-session-tabs"])
+        XCTAssertEqual(smoke["ok"] as? Bool, true, "UI smoke reply: \(smoke)")
+
+        XCTAssertEqual(try fixtureActiveSessionID(supportDir: supportDir), "s10")
+        XCTAssertEqual(try fixtureActivePaneID(supportDir: supportDir), "s100")
+        XCTAssertEqual(try fixturePaneIDs(supportDir: supportDir), ["s11", "s100"])
+    }
+
     func testUIE2ESmokeTogglesBrowserPaneThroughAccessibility() throws {
         try requireUIE2EEnabled()
         try requireAccessibilityTrust()

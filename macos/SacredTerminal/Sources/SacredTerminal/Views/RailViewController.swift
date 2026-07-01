@@ -9,12 +9,13 @@ import AppKit
 final class RailViewController: NSViewController {
 
     private let scrollView = NSScrollView()
-    private let treeStack = NSStackView()
+    private let treeView = RailTreeView()
     /// Flipped container so the tree grows top-down inside the scroll view.
     private let documentView = FlippedView()
 
     private var observer: NSObjectProtocol?
     private var topBar: NSView?
+    private var treeHeightConstraint: NSLayoutConstraint?
 
     // MARK: - Lifecycle
 
@@ -41,13 +42,12 @@ final class RailViewController: NSViewController {
         documentView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = documentView
 
-        treeStack.translatesAutoresizingMaskIntoConstraints = false
-        treeStack.orientation = .vertical
-        treeStack.alignment = .leading
-        treeStack.distribution = .fill
-        treeStack.spacing = 1
-        treeStack.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 12, right: 8)
-        documentView.addSubview(treeStack)
+        treeView.translatesAutoresizingMaskIntoConstraints = false
+        treeView.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 12, right: 8)
+        treeView.spacing = 1
+        documentView.addSubview(treeView)
+        let treeHeightConstraint = treeView.heightAnchor.constraint(equalToConstant: treeView.requiredHeight)
+        self.treeHeightConstraint = treeHeightConstraint
 
         NSLayoutConstraint.activate([
             topBar.topAnchor.constraint(equalTo: root.topAnchor),
@@ -65,10 +65,11 @@ final class RailViewController: NSViewController {
             documentView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
             documentView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
 
-            treeStack.topAnchor.constraint(equalTo: documentView.topAnchor),
-            treeStack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor),
-            treeStack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
-            treeStack.bottomAnchor.constraint(equalTo: documentView.bottomAnchor),
+            treeView.topAnchor.constraint(equalTo: documentView.topAnchor),
+            treeView.leadingAnchor.constraint(equalTo: documentView.leadingAnchor),
+            treeView.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
+            treeView.bottomAnchor.constraint(equalTo: documentView.bottomAnchor),
+            treeHeightConstraint,
         ])
     }
 
@@ -122,10 +123,7 @@ final class RailViewController: NSViewController {
         view.layer?.backgroundColor = Theme.railBgLive.cgColor
         topBar?.layer?.backgroundColor = Theme.railBgLive.cgColor
 
-        treeStack.arrangedSubviews.forEach {
-            treeStack.removeArrangedSubview($0)
-            $0.removeFromSuperview()
-        }
+        treeView.removeRows()
 
         let state = AppState.shared
         // Global ⌘N hint counter across all visible session rows.
@@ -133,9 +131,7 @@ final class RailViewController: NSViewController {
 
         for project in state.projects {
             let row = ProjectRow(project: project)
-            treeStack.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: treeStack.widthAnchor,
-                                       constant: -(treeStack.edgeInsets.left + treeStack.edgeInsets.right)).isActive = true
+            treeView.addRow(row)
 
             guard !project.collapsed else { continue }
 
@@ -144,11 +140,11 @@ final class RailViewController: NSViewController {
                 let hint = shortcutIndex <= 9 ? shortcutIndex : nil
                 let sRow = SessionRow(project: project, session: session, shortcut: hint,
                                       active: session.id == state.activeSessionID)
-                treeStack.addArrangedSubview(sRow)
-                sRow.widthAnchor.constraint(equalTo: treeStack.widthAnchor,
-                                            constant: -(treeStack.edgeInsets.left + treeStack.edgeInsets.right)).isActive = true
+                treeView.addRow(sRow)
             }
         }
+        treeHeightConstraint?.constant = treeView.requiredHeight
+        treeView.needsLayout = true
     }
 
     // MARK: - Actions
@@ -236,6 +232,7 @@ final class RailViewController: NSViewController {
         stack.spacing = 3
         return stack
     }
+
 }
 
 // MARK: - Project row
@@ -297,6 +294,7 @@ private final class ProjectRow: HoverView {
         // The narrow rail can't fit name + full path inline (the mock hides the
         // path too), so the path is a hover tooltip.
         toolTip = project.path
+        identifier = NSUserInterfaceItemIdentifier("project-row-\(project.id)")
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel("Project \(project.name)")
@@ -550,7 +548,7 @@ private func pillIconButton(symbol: String, fallback: String, tooltip: String,
 /// brand icon (or a spinner while working/waiting), the task text, and a ⌘N hint.
 /// The visible box is indented under its project; when active it gets the mock's
 /// subtle PEACH fill + border (never a solid blue). A hover × closes it.
-private final class SessionRow: HoverView {
+private final class SessionRow: NSButton {
     private let session: Session
     private let active: Bool
 
@@ -559,14 +557,23 @@ private final class SessionRow: HoverView {
     private let spinner = NSProgressIndicator()
     private let label = NSTextField(labelWithString: "")
     private let hintLabel = NSTextField(labelWithString: "")
-    private let activationButton = RowActivationButton()
     private let closeButton = NSButton()
+    private var tracking: NSTrackingArea?
+    private var isHovering = false
+
+    override var isFlipped: Bool { true }
 
     init(project: Project, session: Session, shortcut: Int?, active: Bool) {
         self.session = session
         self.active = active
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
+        isBordered = false
+        bezelStyle = .regularSquare
+        imagePosition = .noImage
+        title = ""
+        setButtonType(.momentaryChange)
+        focusRingType = .none
 
         let busy = session.status == .working || session.status == .waiting
 
@@ -614,20 +621,12 @@ private final class SessionRow: HoverView {
         hintLabel.alphaValue = 0.55
         hintLabel.stringValue = shortcut.map { "⌘\($0)" } ?? ""
 
-        // Native transparent hit target for the full row. Keeping this as an
-        // NSButton makes click and AXPress activation deterministic even though the
-        // row itself is a custom composite view.
-        activationButton.translatesAutoresizingMaskIntoConstraints = false
-        activationButton.isBordered = false
-        activationButton.bezelStyle = .regularSquare
-        activationButton.imagePosition = .noImage
-        activationButton.title = ""
-        activationButton.setButtonType(.momentaryChange)
-        activationButton.target = self
-        activationButton.action = #selector(activateSession)
-        activationButton.toolTip = "\(Agents.def(session.agent).name) session"
-        activationButton.setAccessibilityLabel("\(Agents.def(session.agent).name) session \(session.task)")
-        activationButton.setAccessibilityIdentifier("session-row-\(session.id)")
+        let accessibilityName = "\(Agents.def(session.agent).name) session \(session.task)"
+        toolTip = accessibilityName
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(accessibilityName)
+        identifier = NSUserInterfaceItemIdentifier("session-row-\(session.id)")
+        setAccessibilityIdentifier("session-row-\(session.id)")
 
         // Close (×), revealed on hover. Use a TEMPLATE symbol — `contentTintColor`
         // tints images, not button title text, so a bare "×" title rendered in the
@@ -659,7 +658,6 @@ private final class SessionRow: HoverView {
         box.addSubview(spinner)
         box.addSubview(label)
         box.addSubview(hintLabel)
-        box.addSubview(activationButton)
         box.addSubview(closeButton)
 
         NSLayoutConstraint.activate([
@@ -687,11 +685,6 @@ private final class SessionRow: HoverView {
             hintLabel.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -8),
             hintLabel.centerYAnchor.constraint(equalTo: box.centerYAnchor),
 
-            activationButton.leadingAnchor.constraint(equalTo: box.leadingAnchor),
-            activationButton.trailingAnchor.constraint(equalTo: box.trailingAnchor),
-            activationButton.topAnchor.constraint(equalTo: box.topAnchor),
-            activationButton.bottomAnchor.constraint(equalTo: box.bottomAnchor),
-
             closeButton.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -5),
             closeButton.centerYAnchor.constraint(equalTo: box.centerYAnchor),
             closeButton.widthAnchor.constraint(equalToConstant: 18),
@@ -714,15 +707,16 @@ private final class SessionRow: HoverView {
            hit == closeButton || hit.isDescendant(of: closeButton) {
             return hit
         }
-        if let hit = activationButton.hitTest(convert(point, to: activationButton)) {
-            return hit
-        }
-        return super.hitTest(point)
+        return self
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
+        activateSession()
+    }
+
+    override func performClick(_ sender: Any?) {
         activateSession()
     }
 
@@ -739,22 +733,112 @@ private final class SessionRow: HoverView {
         AppState.shared.closeSession(session.id)
     }
 
-    override func hoverChanged(_ hovering: Bool) {
+    private func hoverChanged(_ hovering: Bool) {
         closeButton.isHidden = !hovering
         hintLabel.isHidden = hovering
         if !active {
             box.layer?.backgroundColor = hovering ? Theme.hover.cgColor : NSColor.clear.cgColor
         }
     }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let area = NSTrackingArea(rect: bounds,
+                                  options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect, .assumeInside],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        tracking = area
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        syncHoverWithPointer()
+    }
+
+    override func mouseEntered(with event: NSEvent) { setHovering(true) }
+    override func mouseExited(with event: NSEvent) { setHovering(false) }
+
+    private func syncHoverWithPointer() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window else {
+                self?.setHovering(false)
+                return
+            }
+            let point = self.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+            self.setHovering(self.bounds.contains(point))
+        }
+    }
+
+    private func setHovering(_ hovering: Bool) {
+        guard hovering != isHovering else { return }
+        isHovering = hovering
+        hoverChanged(hovering)
+    }
 }
 
 // MARK: - Small reusable views
 
-private final class RowActivationButton: NSButton {
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override var focusRingType: NSFocusRingType {
-        get { .none }
-        set {}
+private final class RailTreeView: NSView {
+    var edgeInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0) {
+        didSet { invalidateIntrinsicContentSize(); needsLayout = true }
+    }
+    var spacing: CGFloat = 0 {
+        didSet { invalidateIntrinsicContentSize(); needsLayout = true }
+    }
+
+    private let rowHeight: CGFloat = 30
+    private var rows: [NSView] = []
+
+    override var isFlipped: Bool { true }
+
+    var requiredHeight: CGFloat {
+        guard !rows.isEmpty else { return edgeInsets.top + edgeInsets.bottom }
+        return edgeInsets.top + edgeInsets.bottom
+            + CGFloat(rows.count) * rowHeight
+            + CGFloat(max(0, rows.count - 1)) * spacing
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: requiredHeight)
+    }
+
+    func addRow(_ row: NSView) {
+        rows.append(row)
+        addSubview(row)
+        invalidateIntrinsicContentSize()
+        needsLayout = true
+    }
+
+    func removeRows() {
+        for row in rows {
+            row.removeFromSuperview()
+        }
+        rows.removeAll()
+        invalidateIntrinsicContentSize()
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let width = max(0, bounds.width - edgeInsets.left - edgeInsets.right)
+        var y = edgeInsets.top
+        for row in rows {
+            row.frame = NSRect(x: edgeInsets.left, y: y, width: width, height: rowHeight)
+            y += rowHeight + spacing
+        }
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard bounds.contains(point), !isHidden else { return nil }
+        layoutSubtreeIfNeeded()
+        for row in rows.reversed() where !row.isHidden {
+            guard row.frame.contains(point) else { continue }
+            if let hit = row.hitTest(convert(point, to: row)) {
+                return hit
+            }
+        }
+        return super.hitTest(point)
     }
 }
 
