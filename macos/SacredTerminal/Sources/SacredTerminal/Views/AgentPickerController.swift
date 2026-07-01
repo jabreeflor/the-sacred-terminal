@@ -230,6 +230,10 @@ private final class WorktreeCheckbox: NSView {
         layer?.borderWidth = 1
         layer?.borderColor = line.cgColor
         layer?.backgroundColor = NSColor.white.withAlphaComponent(0.03).cgColor
+        setAccessibilityElement(true)
+        setAccessibilityRole(.checkBox)
+        setAccessibilityLabel("Open with worktree")
+        setAccessibilityIdentifier("agent-picker-worktree")
 
         // 17px check tile.
         let tile = NSView()
@@ -281,7 +285,22 @@ private final class WorktreeCheckbox: NSView {
 
     override func mouseEntered(with event: NSEvent) { if !on { layer?.borderColor = Theme.hex("#32323a").cgColor; layer?.backgroundColor = Theme.hover.cgColor } }
     override func mouseExited(with event: NSEvent) { if !on { restyle() } }
-    override func mouseDown(with event: NSEvent) { on.toggle(); restyle(); onToggle(on) }
+    override func mouseDown(with event: NSEvent) { toggle() }
+
+    override func accessibilityValue() -> Any? {
+        on
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        toggle()
+        return true
+    }
+
+    private func toggle() {
+        on.toggle()
+        restyle()
+        onToggle(on)
+    }
 
     private func restyle() {
         checkmark.isHidden = !on
@@ -304,9 +323,11 @@ private final class WorktreeCheckbox: NSView {
 /// One selectable agent (mock `.agent`): a 32px icon slot + name + provider sub.
 private final class AgentPickerRow: NSView {
     private let onPick: () -> Void
+    private let agent: AgentKey
     private var tracking: NSTrackingArea?
 
     init(agent: AgentKey, onPick: @escaping () -> Void) {
+        self.agent = agent
         self.onPick = onPick
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
@@ -314,6 +335,10 @@ private final class AgentPickerRow: NSView {
         layer?.cornerRadius = 8
 
         let def = Agents.def(agent)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(def.name)
+        setAccessibilityIdentifier("agent-picker-row-\(agent.rawValue)")
 
         // 32px transparent slot with a 20px centered brand glyph.
         let slot = NSView()
@@ -369,6 +394,11 @@ private final class AgentPickerRow: NSView {
     override func mouseDown(with event: NSEvent) { fire() }
 
     @objc private func fire() { onPick() }
+
+    override func accessibilityPerformPress() -> Bool {
+        fire()
+        return true
+    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()

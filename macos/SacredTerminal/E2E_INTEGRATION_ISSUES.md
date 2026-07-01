@@ -398,50 +398,55 @@ Readiness summary:
 - Category: testability
 - Severity: high
 - Owner thread: worker:ui-accessibility
-- Status: investigated
+- Status: fixed for first UI smoke slice; remaining menu-bar/settings custom controls deferred
 - Evidence: The source search above observed gesture/mouse-only controls in `Views/AgentPickerController.swift:284`, `Views/AgentPickerController.swift:363`, `Views/AgentPickerController.swift:369`, `MenuBar/MenuBarRoster.swift:173`, `MenuBar/MenuBarRoster.swift:236`, `Settings/SettingsWindowController.swift:1112`, `Settings/SettingsWindowController.swift:1157`, and `Settings/SettingsWindowController.swift:1210`. The same search only found explicit `setAccessibilityLabel` / `setAccessibilityIdentifier` calls in `Views/RailViewController.swift:426`, `Views/RailViewController.swift:427`, `Views/RailViewController.swift:511`, `Views/RailViewController.swift:617`, `Views/RailViewController.swift:618`, and `Views/RailViewController.swift:763`.
 - Reproduction: Open the agent picker, menu-bar roster, or settings overlay and try to locate/invoke the worktree checkbox, agent picker rows, menu-bar session rows, settings tabs, settings switches, or checkbox rows through Accessibility selectors rather than coordinates. These controls are mostly `NSView` subclasses with `mouseDown` or `NSClickGestureRecognizer`, so the expected button/checkbox role and `performPress` action are not guaranteed.
 - Suggested next step: Convert these controls to `NSButton`/`NSControl` where practical, or implement `NSAccessibility` role, label, identifier, value, and press action on `WorktreeCheckbox`, `AgentPickerRow`, `MenuBarSessionRow`, `MenuBarActionRow`, settings `TabButton`, `ToggleSwitch`, and `CheckBox`.
+- Fix-phase update: Added Accessibility roles, labels, identifiers, and press actions for `ProjectRow`, `SessionRow`, `WorktreeCheckbox`, and `AgentPickerRow`. Menu-bar roster rows and settings custom controls remain deferred because the first practical UI smoke path does not exercise them.
 
 ### UI-ACCESS-002: Workspace, Browser, And Titlebar Buttons Lack Stable Selectors
 
 - Category: testability
 - Severity: medium
 - Owner thread: worker:ui-accessibility
-- Status: investigated
+- Status: fixed
 - Evidence: `Views/RootViewController.swift:180`-`197` configures sidebar/browser image buttons with tooltip and symbol description only. `Views/WorkspaceViewController.swift:364`-`372` sets only `toolTip` for split/new-tab buttons; `Views/WorkspaceViewController.swift:581`-`588` creates tab buttons with empty titles; `Views/WorkspaceViewController.swift:611`-`628` gives tab close only a tooltip. `Browser/BrowserPanelController.swift:169`-`193` creates browser toolbar buttons with `accessibilityDescription: nil`, and the URL field at `Browser/BrowserPanelController.swift:83`-`99` has no identifier.
 - Reproduction: After seeding a session, attempt to click `Toggle browser`, browser back/forward/reload/close, browser URL, `Split right`, `Split down`, `New tab`, pane tabs, or tab close through stable Accessibility identifiers. The visual controls exist, but automation would need fallback label guessing or coordinate clicks.
 - Suggested next step: Add explicit identifiers and labels such as `titlebar-toggle-sidebar`, `titlebar-toggle-browser`, `workspace-split-right`, `workspace-split-down`, `workspace-new-tab`, `workspace-tab-<paneID>`, `workspace-tab-close-<paneID>`, `browser-url`, `browser-back`, `browser-forward`, `browser-reload`, and `browser-close`.
+- Fix-phase update: Added stable labels/identifiers for the main window, titlebar sidebar/browser buttons, workspace split/new-tab/tab/close controls, browser panel/toolbar/back/forward/reload/URL/close controls, and rail settings/add-project buttons.
 
 ### UI-ACCESS-003: Hover-Only Session And Quick-Pick Controls Are Flaky Under Automation
 
 - Category: flaky-risk
 - Severity: high
 - Owner thread: worker:ui-accessibility
-- Status: investigated
+- Status: deferred
 - Evidence: `Views/RailViewController.swift:345`-`346` enables quick-pick hit testing and fades the pill only while hovering. `Views/RailViewController.swift:622` initially hides the session close button, and `Views/RailViewController.swift:692`-`694` only reveals it on hover. `Views/RailViewController.swift:718`-`744` uses `.assumeInside` tracking plus async pointer sync. `KNOWN_ISSUES.md:12`-`65` still marks quick-pick hover-grow, session close click, and adding a second session from the hover pill as needing visual/click confirmation.
 - Reproduction: Hover a project row, click an agent, and immediately click another agent without moving the pointer; or hover a session row and click the revealed close button. These are exactly the flows future smoke tests want, but they depend on cursor position, animation timing, and view rebuilds.
 - Suggested next step: Quarantine destructive/hover-only checks from the first smoke pass or add an E2E mode that disables animations and keeps hover affordances hit-testable/visible. Prefer direct Accessibility actions or socket/test commands for session creation and close assertions.
+- Fix-phase update: The `RUN_UI_E2E=1` smoke test intentionally avoids hover-only quick-pick and session-close flows. It creates state through an isolated fixture, then drives deterministic new-tab and browser controls through Accessibility.
 
 ### UI-ACCESS-004: UI State Preconditioning Needs A Test Seam Beyond The Current Socket
 
 - Category: testability
 - Severity: high
 - Owner thread: worker:ui-accessibility
-- Status: investigated
+- Status: fixed for first UI smoke slice; broader socket/test commands deferred
 - Evidence: `State/AppState.swift:126`, `State/AppState.swift:140`, `State/AppState.swift:160`, `State/AppState.swift:169`, `State/AppState.swift:178`, and `State/AppState.swift:195` already contain state mutations for session creation/close, pane add/split/close, and browser toggle. The socket command search observed only `status`, `list-sessions`, `focus`, and `new-session` in `Socket/SocketServer.swift:228`-`248`; `new-session` requires an existing project ID. The clean empty-state path opens native folder selection at `Views/WorkspaceViewController.swift:203`-`214`, and rail add-project uses `NSMenu` / `NSOpenPanel` / `NSAlert` at `Views/RailViewController.swift:160`-`226`.
 - Reproduction: Start with no persisted workspace and try to reach a deterministic state for tab/split/browser/menu-bar smoke tests without coordinate-clicking native panels or hand-editing persistence. There is no socket/test command to add a project, close a session, add/split/close panes, toggle browser, set browser URL, or force session status.
 - Suggested next step: Add an E2E-only fixture loader or socket commands for add-project, close-session, add-pane, split, close-pane, toggle-browser, set-browser-url, and set-status. Keep product UI tests focused on a small number of user interactions after state is seeded.
+- Fix-phase update: The UI E2E harness seeds a complete project/session snapshot in an isolated `SACRED_TERMINAL_APP_SUPPORT_DIR` before launching the real app. The smoke test verifies UI actions by reading the same isolated `session.json`; broader E2E-only socket commands for arbitrary UI state remain deferred.
 
 ### UI-ACCESS-005: Window Close/Reopen And Menu-Bar Snap-Back Need An Explicit Smoke Decision
 
 - Category: question
 - Severity: low
 - Owner thread: worker:ui-accessibility
-- Status: investigated
+- Status: deferred
 - Evidence: `AppDelegate.swift:49`-`57` intentionally keeps the app alive after the last window closes and reopens the main window on app reopen. `StatusItemController.swift:185`-`201` uses an `NSPopover` for the menu-bar roster and posts `.sacredFocusSession` when a row is picked. `MenuBarRoster.swift:88`-`195` implements session rows as custom gesture-backed `NSView`s, which is already covered as a testability gap in `UI-ACCESS-001`.
 - Reproduction: Close the main window, assert sessions are still alive via `list-sessions`, then reopen/focus through Dock/app reopen or the menu-bar roster. This is a valuable product behavior, but menu-bar UI automation is likely brittle until roster rows have Accessibility roles/selectors.
 - Suggested next step: Decide whether first-pass smoke tests cover only window close plus socket assertion, or also menu-bar snap-back. If snap-back is in scope, add Accessibility identifiers/actions to the status item and roster rows first.
+- Fix-phase update: First-pass UI E2E scope is explicit: seeded window appears, titlebar/workspace controls are discoverable, new tab is clickable, and browser open/close is clickable. Window close/reopen and menu-bar snap-back remain deferred until roster rows have stable selectors/actions.
 <!-- worker:ui-accessibility:end -->
 
 ## Known Broken And Quarantine Candidates
@@ -456,6 +461,7 @@ Readiness summary:
 - Evidence: `macos/SacredTerminal/KNOWN_ISSUES.md:12-65` explicitly marks quick-pick hover-grow, session close click, and adding a second session from the hover pill as needing visual/click confirmation. The implementation is still hover-gated: `RailViewController.ProjectRow.hoverChanged` only enables pill hit testing while hovering (`Sources/SacredTerminal/Views/RailViewController.swift:344-347`), quick-pick buttons fire sessions directly on mouse down (`RailViewController.swift:493-499`), and session close is hidden until hover (`RailViewController.swift:622`, `RailViewController.swift:692-694`). Command run: `nl -ba macos/SacredTerminal/KNOWN_ISSUES.md | sed -n '1,120p'`; observed lines include "needs visual confirmation", "needs click confirmation", and "needs click confirmation" for these three flows.
 - Reproduction: Hover a project row, move across the agent icons, click an agent, then immediately click another agent without moving the pointer; or hover a session row and click the revealed `xmark`. These paths depend on cursor position, tracking-area sync, animations, and destructive state changes.
 - Suggested next step: Keep these out of the first always-on pass. Put visual hover-grow and destructive close-click checks behind `RUN_UI_E2E` or mark them `XCTExpectFailure` until the manual pass lands. For always-on coverage, create sessions through fixture/socket state instead of the hover pill and avoid closing user/restored sessions.
+- Fix-phase update: Still quarantined. The first UI smoke test does not automate hover-pill creation or hover-revealed session close; it uses fixture state plus non-hover titlebar/workspace/browser controls.
 
 ### KB-002: `sacred status` Is Flaky Under CLI Smoke Checks
 
@@ -543,6 +549,8 @@ This section is owned by the orchestrator after worker findings are collected.
 
 Fix-phase update (first E2E slice): landed the shared `SACRED_TERMINAL_APP_SUPPORT_DIR` app/CLI path seam, E2E-only fatal socket startup diagnostics, isolated SwiftPM black-box integration tests, fixture-safe Ghostty surface disabling, active-session/pane normalization, project-ID bumping, stale non-socket CLI handling, and repeated `sacred status` stability. Deferred items remain quarantined below: structured `--json` CLI output, multi-command socket framing, tolerant snapshot decoding, UI accessibility/smoke work, programmable browser, worktree/Git behavior, real agent status lifecycle, and hosted-process survival.
 
+Fix-phase update (first UI E2E slice): landed minimal AppKit Accessibility selectors/actions and an opt-in `RUN_UI_E2E=1` XCTest. The test launches the real app with isolated fixture state, verifies seeded project/session/window controls, presses `workspace-new-tab`, opens the browser from the titlebar, verifies browser toolbar/URL selectors, closes the browser, and confirms persisted state changes in the isolated fixture. Remaining UI work below is limited to broader/custom surfaces such as menu-bar snap-back, settings, hover-only rail affordances, programmable browser APIs, and visual/pixel checks.
+
 ### Blockers
 
 - Add an explicit app-support/socket isolation seam shared by the app and CLI.
@@ -587,9 +595,11 @@ Fix-phase update (first E2E slice): landed the shared `SACRED_TERMINAL_APP_SUPPO
 - Add deterministic UI state preconditioning.
   - Covers: UI-ACCESS-004.
   - Fix target: fixture loader or E2E-only socket commands for add project, close session, panes/splits, browser URL/open state, and status.
+  - Status update: fixed for the first UI smoke path via isolated fixture snapshots; broader E2E-only state commands remain deferred.
 - Add Accessibility roles, identifiers, and actions for UI smoke paths.
   - Covers: UI-ACCESS-001, UI-ACCESS-002, UI-ACCESS-005.
   - Fix target: custom controls need roles/actions; titlebar/workspace/browser/menu-bar controls need stable identifiers.
+  - Status update: fixed for main-window/titlebar/workspace/browser/project/session/agent-picker first-slice controls; menu-bar/settings custom controls remain deferred.
 - Add deterministic E2E env controls for shell/Ghostty behavior.
   - Covers: HARN-ISO-004.
   - Fix target: skip login-shell PATH import in E2E mode and force temp Ghostty config/theme.
@@ -613,7 +623,7 @@ Fix-phase update (first E2E slice): landed the shared `SACRED_TERMINAL_APP_SUPPO
   - Covers: KB-001, UI-ACCESS-003.
 - Quarantine programmable browser assertions.
   - Covers: KB-003.
-  - Allowed first-pass scope: open/close browser pane and maybe load a URL once selectors/state seams exist.
+  - Allowed first-pass scope: open/close browser pane and URL toolbar selectors; this is now covered by the opt-in UI smoke. Programmable DOM/click/fill/eval assertions remain quarantined.
 - Quarantine worktree and Git/source-control behavior.
   - Covers: KB-004.
 - Quarantine real agent status lifecycle transitions.

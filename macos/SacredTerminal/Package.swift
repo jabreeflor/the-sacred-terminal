@@ -55,7 +55,10 @@ let package = Package(
         .testTarget(
             name: "SacredTerminalIntegrationTests",
             dependencies: ["SacredTerminalSupport"],
-            path: "Tests/SacredTerminalIntegrationTests"
+            path: "Tests/SacredTerminalIntegrationTests",
+            linkerSettings: [
+                .linkedFramework("ApplicationServices"),
+            ]
         ),
     ]
 )

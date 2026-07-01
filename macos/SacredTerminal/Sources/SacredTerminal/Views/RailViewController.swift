@@ -297,6 +297,10 @@ private final class ProjectRow: HoverView {
         // The narrow rail can't fit name + full path inline (the mock hides the
         // path too), so the path is a hover tooltip.
         toolTip = project.path
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Project \(project.name)")
+        setAccessibilityIdentifier("project-row-\(project.id)")
 
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: 30),
@@ -335,6 +339,11 @@ private final class ProjectRow: HoverView {
 
     override func mouseDown(with event: NSEvent) {
         AppState.shared.toggleCollapse(project.id)
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        AppState.shared.toggleCollapse(project.id)
+        return true
     }
 
     @objc private func openPicker() {
@@ -621,6 +630,11 @@ private final class SessionRow: HoverView {
         closeButton.action = #selector(close)
         closeButton.isHidden = true
 
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("\(Agents.def(session.agent).name) session \(session.task)")
+        setAccessibilityIdentifier("session-row-\(session.id)")
+
         addSubview(box)
         box.addSubview(handle)
         box.addSubview(iconView)
@@ -683,6 +697,11 @@ private final class SessionRow: HoverView {
 
     override func mouseDown(with event: NSEvent) {
         AppState.shared.setActive(session.id)
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        AppState.shared.setActive(session.id)
+        return true
     }
 
     @objc private func close() {
@@ -761,6 +780,7 @@ private func railIconButton(symbol: String, fallback: String, tooltip: String,
     b.imagePosition = .imageOnly
     b.toolTip = tooltip
     b.setAccessibilityLabel(tooltip)
+    b.setAccessibilityIdentifier(tooltip == "Settings" ? "rail-settings" : "rail-add-project")
     b.target = target
     b.action = action
     b.contentTintColor = Theme.textDim

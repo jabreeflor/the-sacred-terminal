@@ -106,6 +106,7 @@ private final class SacredTitlebar: NSView {
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.backgroundColor = Theme.titlebarBg.cgColor
+        setAccessibilityIdentifier("sacred-titlebar")
 
         let hairline = NSView()
         hairline.translatesAutoresizingMaskIntoConstraints = false
@@ -116,6 +117,8 @@ private final class SacredTitlebar: NSView {
         // Sidebar toggle (just right of the native traffic lights).
         configureIconButton(sidebarButton, symbol: "sidebar.left", fallback: "▤",
                             tooltip: "Toggle side rail (⌘B)", action: #selector(toggleSidebar))
+        sidebarButton.setAccessibilityLabel("Toggle side rail")
+        sidebarButton.setAccessibilityIdentifier("titlebar-toggle-sidebar")
         sidebarButton.contentTintColor = Theme.text
         addSubview(sidebarButton)
 
@@ -131,6 +134,8 @@ private final class SacredTitlebar: NSView {
         // Right: browser toggle + branch.
         configureIconButton(globeButton, symbol: "globe", fallback: "◍",
                             tooltip: "Toggle browser (⌘⌥B)", action: #selector(toggleBrowser))
+        globeButton.setAccessibilityLabel("Toggle browser")
+        globeButton.setAccessibilityIdentifier("titlebar-toggle-browser")
         globeButton.wantsLayer = true
         globeButton.layer?.cornerRadius = 6
         addSubview(globeButton)

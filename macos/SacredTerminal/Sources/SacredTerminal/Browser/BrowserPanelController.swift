@@ -36,6 +36,7 @@ final class BrowserPanelController: NSViewController, WKNavigationDelegate, NSTe
         root.translatesAutoresizingMaskIntoConstraints = false
         root.wantsLayer = true
         root.layer?.backgroundColor = Theme.panelBg.cgColor   // mock .browser-pane #0e0e11
+        root.setAccessibilityIdentifier("browser-panel")
         self.view = root
 
         // Left seam (mock .browser-pane border-left rgba(255,255,255,.08)).
@@ -50,6 +51,7 @@ final class BrowserPanelController: NSViewController, WKNavigationDelegate, NSTe
         toolbar.translatesAutoresizingMaskIntoConstraints = false
         toolbar.wantsLayer = true
         toolbar.layer?.backgroundColor = Theme.titlebarBg.cgColor
+        toolbar.setAccessibilityIdentifier("browser-toolbar")
         root.addSubview(toolbar)
 
         // Bottom hairline separating the toolbar from the web content.
@@ -59,10 +61,18 @@ final class BrowserPanelController: NSViewController, WKNavigationDelegate, NSTe
         separator.layer?.backgroundColor = Theme.hairlineSoft.cgColor   // #222228
         toolbar.addSubview(separator)
 
-        backButton = makeToolButton(symbol: "chevron.left", fallback: "‹", action: #selector(goBack))
-        forwardButton = makeToolButton(symbol: "chevron.right", fallback: "›", action: #selector(goForward))
-        reloadButton = makeToolButton(symbol: "arrow.clockwise", fallback: "⟳", action: #selector(reload))
-        let closeButton = makeToolButton(symbol: "xmark", fallback: "✕", action: #selector(closeBrowser))
+        backButton = makeToolButton(symbol: "chevron.left", fallback: "‹",
+                                    label: "Back", identifier: "browser-back",
+                                    action: #selector(goBack))
+        forwardButton = makeToolButton(symbol: "chevron.right", fallback: "›",
+                                       label: "Forward", identifier: "browser-forward",
+                                       action: #selector(goForward))
+        reloadButton = makeToolButton(symbol: "arrow.clockwise", fallback: "⟳",
+                                      label: "Reload", identifier: "browser-reload",
+                                      action: #selector(reload))
+        let closeButton = makeToolButton(symbol: "xmark", fallback: "✕",
+                                         label: "Close browser", identifier: "browser-close",
+                                         action: #selector(closeBrowser))
 
         // URL box: a styled pill (globe + editable field) — mock .browser-url.
         let urlBox = NSView()
@@ -72,6 +82,7 @@ final class BrowserPanelController: NSViewController, WKNavigationDelegate, NSTe
         urlBox.layer?.borderWidth = 1
         urlBox.layer?.borderColor = Theme.pickerLine.cgColor       // #2a2a30
         urlBox.layer?.backgroundColor = Theme.browserUrlBg.cgColor // #0d0d10
+        urlBox.setAccessibilityIdentifier("browser-url-box")
 
         let globe = NSImageView()
         globe.translatesAutoresizingMaskIntoConstraints = false
@@ -96,6 +107,8 @@ final class BrowserPanelController: NSViewController, WKNavigationDelegate, NSTe
         urlField.target = self
         urlField.action = #selector(urlSubmitted)
         urlField.delegate = self
+        urlField.setAccessibilityLabel("Browser URL")
+        urlField.setAccessibilityIdentifier("browser-url")
         urlBox.addSubview(urlField)
         toolbar.addSubview(urlBox)
 
@@ -166,16 +179,23 @@ final class BrowserPanelController: NSViewController, WKNavigationDelegate, NSTe
 
     // MARK: - Toolbar factory
 
-    private func makeToolButton(symbol: String, fallback: String, action: Selector) -> NSButton {
+    private func makeToolButton(symbol: String,
+                                fallback: String,
+                                label: String,
+                                identifier: String,
+                                action: Selector) -> NSButton {
         let button = NSButton()
         button.translatesAutoresizingMaskIntoConstraints = false
         button.bezelStyle = .regularSquare
         button.isBordered = false
         button.imagePosition = .imageOnly
+        button.toolTip = label
+        button.setAccessibilityLabel(label)
+        button.setAccessibilityIdentifier(identifier)
         button.contentTintColor = Theme.textDim
         button.target = self
         button.action = action
-        if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
+        if let img = NSImage(systemSymbolName: symbol, accessibilityDescription: label) {
             button.image = img
             button.imageScaling = .scaleProportionallyDown
         } else {

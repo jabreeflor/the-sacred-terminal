@@ -1,3 +1,4 @@
+import ApplicationServices
 import Darwin
 import Foundation
 import SacredTerminalSupport
@@ -135,6 +136,51 @@ final class SacredTerminalIntegrationTests: XCTestCase {
                       "Expected AF_UNIX path-length diagnostic in stderr; got: \(result.stderr)")
     }
 
+    func testUIE2ESmokeTogglesBrowserPaneThroughAccessibility() throws {
+        try requireUIE2EEnabled()
+        try requireAccessibilityTrust()
+
+        let supportDir = try makeTempDirectory()
+        let projectDir = try makeTempDirectory(prefix: "st-e2e-ui-project")
+        try writeFixtureSnapshot(supportDir: supportDir, projectPath: projectDir, collapsed: false)
+
+        let app = try launchApp(supportDir: supportDir)
+        defer { app.terminate() }
+
+        let axApp = AXUIElementCreateApplication(app.process.processIdentifier)
+        _ = try waitForAXWindow(in: axApp, title: "The Sacred Terminal", timeout: 10)
+        _ = try waitForAXElement(in: axApp, identifier: "titlebar-toggle-sidebar", timeout: 5)
+        let browserToggle = try waitForAXElement(in: axApp, identifier: "titlebar-toggle-browser", timeout: 5)
+        _ = try waitForAXElement(in: axApp, identifier: "project-row-s99", timeout: 5)
+        _ = try waitForAXElement(in: axApp, identifier: "session-row-s10", timeout: 5)
+        _ = try waitForAXElement(in: axApp, identifier: "workspace-split-right", timeout: 5)
+        _ = try waitForAXElement(in: axApp, identifier: "workspace-split-down", timeout: 5)
+
+        let newTab = try waitForAXElement(in: axApp, identifier: "workspace-new-tab", timeout: 5)
+        try pressAXElement(newTab, identifier: "workspace-new-tab")
+        try waitUntil("new tab persisted to the isolated fixture") {
+            try fixturePaneIDs(supportDir: supportDir).count == 2
+        }
+        _ = try waitForAXElement(in: axApp, identifier: "workspace-tab-s100", timeout: 5)
+
+        try pressAXElement(browserToggle, identifier: "titlebar-toggle-browser")
+        try waitUntil("browser open state persisted to the isolated fixture") {
+            try fixtureBrowserOpen(supportDir: supportDir) == true
+        }
+        let urlField = try waitForAXElement(in: axApp, identifier: "browser-url", timeout: 5)
+        XCTAssertEqual(axStringAttribute(urlField, Self.axValueAttribute), "http://localhost:3000")
+        _ = try waitForAXElement(in: axApp, identifier: "browser-reload", timeout: 5)
+
+        let closeBrowser = try waitForAXElement(in: axApp, identifier: "browser-close", timeout: 5)
+        try pressAXElement(closeBrowser, identifier: "browser-close")
+        try waitUntil("browser closed state persisted to the isolated fixture") {
+            try fixtureBrowserOpen(supportDir: supportDir) == false
+        }
+        try waitUntil("browser toolbar disappeared from the accessibility tree") {
+            !isAXElementPresent(in: axApp, identifier: "browser-url")
+        }
+    }
+
     private func runSacred(_ arguments: [String], supportDir: URL) throws -> ProcessResult {
         try Self.runProcess(Self.sacredExecutableURL(),
                             arguments: arguments,
@@ -207,7 +253,9 @@ final class SacredTerminalIntegrationTests: XCTestCase {
         ]
     }
 
-    private func writeFixtureSnapshot(supportDir: URL, projectPath: URL) throws {
+    private func writeFixtureSnapshot(supportDir: URL,
+                                      projectPath: URL,
+                                      collapsed: Bool = true) throws {
         try FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
 
         let snapshot: [String: Any] = [
@@ -241,7 +289,7 @@ final class SacredTerminalIntegrationTests: XCTestCase {
                     "id": "s99",
                     "name": "Fixture Project",
                     "path": projectPath.path,
-                    "collapsed": true,
+                    "collapsed": collapsed,
                     "sessions": [
                         [
                             "id": "s10",
@@ -272,6 +320,41 @@ final class SacredTerminalIntegrationTests: XCTestCase {
         let data = try JSONSerialization.data(withJSONObject: snapshot,
                                               options: [.prettyPrinted, .sortedKeys])
         try data.write(to: supportDir.appendingPathComponent("session.json"), options: .atomic)
+    }
+
+    private func requireUIE2EEnabled() throws {
+        guard Self.truthyEnvironmentValue("RUN_UI_E2E") else {
+            throw XCTSkip("Set RUN_UI_E2E=1 to run the AppKit Accessibility UI E2E smoke test.")
+        }
+    }
+
+    private func requireAccessibilityTrust() throws {
+        let options = ["AXTrustedCheckOptionPrompt" as CFString: false] as CFDictionary
+        guard AXIsProcessTrustedWithOptions(options) else {
+            throw XCTSkip("""
+            RUN_UI_E2E=1 requires macOS Accessibility permission for the process running `swift test` \
+            (Terminal, Codex, or the XCTest runner). Grant it in System Settings > Privacy & Security > Accessibility.
+            """)
+        }
+    }
+
+    private func fixturePaneIDs(supportDir: URL) throws -> [String] {
+        let session = try fixtureSession(supportDir: supportDir)
+        let panes = try XCTUnwrap(session["panes"] as? [[String: Any]])
+        return panes.compactMap { $0["id"] as? String }
+    }
+
+    private func fixtureBrowserOpen(supportDir: URL) throws -> Bool {
+        let session = try fixtureSession(supportDir: supportDir)
+        return try XCTUnwrap(session["browserOpen"] as? Bool)
+    }
+
+    private func fixtureSession(supportDir: URL) throws -> [String: Any] {
+        let snapshotData = try Data(contentsOf: supportDir.appendingPathComponent("session.json"))
+        let snapshot = try XCTUnwrap(JSONSerialization.jsonObject(with: snapshotData) as? [String: Any])
+        let projects = try XCTUnwrap(snapshot["projects"] as? [[String: Any]])
+        let sessions = try XCTUnwrap(projects.first?["sessions"] as? [[String: Any]])
+        return try XCTUnwrap(sessions.first(where: { ($0["id"] as? String) == "s10" }))
     }
 
     private func rawSocketJSON(socketPath: String, object: [String: Any]) throws -> [String: Any] {
@@ -381,6 +464,112 @@ final class SacredTerminalIntegrationTests: XCTestCase {
         return url
     }
 
+    private func waitUntil(_ description: String,
+                           timeout: TimeInterval = 5,
+                           _ condition: () throws -> Bool) throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastError: Error?
+        while Date() < deadline {
+            do {
+                if try condition() { return }
+            } catch {
+                lastError = error
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        if let lastError {
+            throw IntegrationTestError.processTimedOut("\(description) timed out after \(timeout)s: \(lastError)")
+        }
+        throw IntegrationTestError.processTimedOut("\(description) timed out after \(timeout)s")
+    }
+
+    private func waitForAXWindow(in app: AXUIElement,
+                                 title: String,
+                                 timeout: TimeInterval) throws -> AXUIElement {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let window = axElement(in: app, matching: { element in
+                axStringAttribute(element, Self.axTitleAttribute) == title
+            }) {
+                return window
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        throw IntegrationTestError.processTimedOut("AX window titled \(title) did not appear within \(timeout)s")
+    }
+
+    private func waitForAXElement(in root: AXUIElement,
+                                  identifier: String,
+                                  timeout: TimeInterval) throws -> AXUIElement {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let element = axElement(in: root, identifier: identifier) {
+                return element
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        throw IntegrationTestError.processTimedOut("AX element \(identifier) did not appear within \(timeout)s")
+    }
+
+    private func isAXElementPresent(in root: AXUIElement, identifier: String) -> Bool {
+        axElement(in: root, identifier: identifier) != nil
+    }
+
+    private func pressAXElement(_ element: AXUIElement, identifier: String) throws {
+        let error = AXUIElementPerformAction(element, Self.axPressAction)
+        guard error == .success else {
+            throw IntegrationTestError.processFailed("AXPress failed for \(identifier): \(error)")
+        }
+    }
+
+    private func axElement(in root: AXUIElement, identifier: String) -> AXUIElement? {
+        axElement(in: root) { element in
+            axStringAttribute(element, Self.axIdentifierAttribute) == identifier
+        }
+    }
+
+    private func axElement(in root: AXUIElement,
+                           matching predicate: (AXUIElement) -> Bool) -> AXUIElement? {
+        var stack = [root]
+        var visited = Set<CFHashCode>()
+        var scanned = 0
+
+        while let element = stack.popLast(), scanned < 4_000 {
+            scanned += 1
+            let hash = CFHash(element)
+            guard visited.insert(hash).inserted else { continue }
+
+            if predicate(element) {
+                return element
+            }
+
+            for attribute in Self.axDescendantAttributes {
+                stack.append(contentsOf: axElementArray(element, attribute))
+            }
+        }
+
+        return nil
+    }
+
+    private func axElementArray(_ element: AXUIElement, _ attribute: CFString) -> [AXUIElement] {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else {
+            return []
+        }
+        guard let array = value as? [Any] else {
+            return []
+        }
+        return array.map { $0 as! AXUIElement }
+    }
+
+    private func axStringAttribute(_ element: AXUIElement, _ attribute: CFString) -> String? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else {
+            return nil
+        }
+        return value as? String
+    }
+
     private static var packageRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)
         url.deleteLastPathComponent()
@@ -469,6 +658,24 @@ final class SacredTerminalIntegrationTests: XCTestCase {
         }
         return environment
     }
+
+    private static func truthyEnvironmentValue(_ key: String) -> Bool {
+        guard let raw = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else {
+            return false
+        }
+        return !["0", "false", "no", "off"].contains(raw.lowercased())
+    }
+
+    private static let axIdentifierAttribute = "AXIdentifier" as CFString
+    private static let axTitleAttribute = "AXTitle" as CFString
+    private static let axValueAttribute = "AXValue" as CFString
+    private static let axPressAction = "AXPress" as CFString
+    private static let axDescendantAttributes = [
+        "AXWindows" as CFString,
+        "AXChildren" as CFString,
+        "AXContents" as CFString,
+    ]
 }
 
 private struct ProcessResult {

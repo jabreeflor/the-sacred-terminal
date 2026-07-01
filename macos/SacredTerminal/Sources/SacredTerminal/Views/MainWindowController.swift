@@ -15,6 +15,7 @@ final class MainWindowController: NSWindowController {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.title = "The Sacred Terminal"
+        window.setAccessibilityIdentifier("main-window")
         window.minSize = NSSize(width: 900, height: 640)
         // Don't let macOS restore a stale frame over our intended launch size.
         window.isRestorable = false

@@ -249,11 +249,20 @@ final class WorkspaceViewController: NSViewController {
         // The mock's content header has split/split/new-tab actions only — outline
         // rect+line glyphs (not filled SF Symbols). The session's working state is
         // shown by the rail spinner, not a pill here.
-        let splitRight = makeActionButton(glyph: .splitRight, tip: "Split right (⌘D)",
+        let splitRight = makeActionButton(glyph: .splitRight,
+                                          tip: "Split right (⌘D)",
+                                          label: "Split right",
+                                          identifier: "workspace-split-right",
                                           action: #selector(splitRightAction))
-        let splitDown = makeActionButton(glyph: .splitDown, tip: "Split down (⌘⇧D)",
+        let splitDown = makeActionButton(glyph: .splitDown,
+                                         tip: "Split down (⌘⇧D)",
+                                         label: "Split down",
+                                         identifier: "workspace-split-down",
                                          action: #selector(splitDownAction))
-        let newTab = makeActionButton(glyph: .newTab, tip: "New tab (⌘T)",
+        let newTab = makeActionButton(glyph: .newTab,
+                                      tip: "New tab (⌘T)",
+                                      label: "New tab",
+                                      identifier: "workspace-new-tab",
                                       action: #selector(newTabAction))
         actions.addArrangedSubview(splitRight)
         actions.addArrangedSubview(splitDown)
@@ -296,6 +305,8 @@ final class WorkspaceViewController: NSViewController {
         tab.target = self
         tab.action = #selector(tabClicked(_:))
         tab.translatesAutoresizingMaskIntoConstraints = false
+        tab.setAccessibilityLabel("\(tabTitle(session: session, pane: pane)) tab")
+        tab.setAccessibilityIdentifier("workspace-tab-\(pane.id)")
 
         // Brand mark for an agent pane, terminal glyph for a shell.
         let icon = NSImageView()
@@ -361,9 +372,15 @@ final class WorkspaceViewController: NSViewController {
     /// (split right/down) and a plus (new tab).
     enum ActionGlyph { case splitRight, splitDown, newTab }
 
-    private func makeActionButton(glyph: ActionGlyph, tip: String, action: Selector) -> NSButton {
+    private func makeActionButton(glyph: ActionGlyph,
+                                  tip: String,
+                                  label: String,
+                                  identifier: String,
+                                  action: Selector) -> NSButton {
         let b = HoverIconButton(image: actionGlyph(glyph), target: self, action: action)
         b.toolTip = tip
+        b.setAccessibilityLabel(label)
+        b.setAccessibilityIdentifier(identifier)
         b.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             b.widthAnchor.constraint(equalToConstant: 24),
@@ -584,6 +601,7 @@ private final class TabButton: NSButton {
         super.init(frame: .zero)
         isBordered = false
         title = ""
+        setAccessibilityRole(.button)
         setButtonType(.momentaryChange)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
@@ -625,6 +643,8 @@ private final class CloseButton: NSButton {
             title = "×"
         }
         toolTip = "Close tab (⌘W)"
+        setAccessibilityLabel("Close tab")
+        setAccessibilityIdentifier("workspace-tab-close-\(paneID)")
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
 }
