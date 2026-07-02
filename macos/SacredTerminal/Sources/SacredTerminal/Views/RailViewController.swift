@@ -559,7 +559,7 @@ private final class SessionRow: NSButton {
     private let spinner = NSProgressIndicator()
     private let label = NSTextField(labelWithString: "")
     private let hintLabel = NSTextField(labelWithString: "")
-    private let closeButton = NSButton()
+    private let closeButton = SessionCloseButton()
     private var tracking: NSTrackingArea?
     private var isHovering = false
 
@@ -648,6 +648,7 @@ private final class SessionRow: NSButton {
         }
         closeButton.contentTintColor = Theme.textDim
         closeButton.setAccessibilityLabel("Close session")
+        closeButton.identifier = NSUserInterfaceItemIdentifier("session-close-\(session.id)")
         closeButton.setAccessibilityIdentifier("session-close-\(session.id)")
         closeButton.toolTip = "Close session"
         closeButton.target = self
@@ -705,9 +706,10 @@ private final class SessionRow: NSButton {
     // Close button gets its own clicks; the rest of the row activates.
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard bounds.contains(point) else { return nil }
-        if !closeButton.isHidden, let hit = closeButton.hitTest(convert(point, to: closeButton)),
-           hit == closeButton || hit.isDescendant(of: closeButton) {
-            return hit
+        if pointHitsCloseButton(point) {
+            setHovering(true)
+            let closePoint = convert(point, to: closeButton)
+            return closeButton.hitTest(closePoint) ?? closeButton
         }
         return self
     }
@@ -715,6 +717,10 @@ private final class SessionRow: NSButton {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
+        if pointHitsCloseButton(convert(event.locationInWindow, from: nil)) {
+            close()
+            return
+        }
         activateSession()
     }
 
@@ -733,6 +739,12 @@ private final class SessionRow: NSButton {
 
     @objc private func close() {
         AppState.shared.closeSession(session.id)
+    }
+
+    private func pointHitsCloseButton(_ point: NSPoint) -> Bool {
+        layoutSubtreeIfNeeded()
+        let closePoint = convert(point, to: closeButton)
+        return closeButton.bounds.contains(closePoint)
     }
 
     private func hoverChanged(_ hovering: Bool) {
@@ -777,6 +789,10 @@ private final class SessionRow: NSButton {
         isHovering = hovering
         hoverChanged(hovering)
     }
+}
+
+private final class SessionCloseButton: NSButton {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 // MARK: - Small reusable views

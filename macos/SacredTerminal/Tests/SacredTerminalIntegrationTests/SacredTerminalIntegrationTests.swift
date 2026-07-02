@@ -252,6 +252,34 @@ final class SacredTerminalIntegrationTests: XCTestCase {
         XCTAssertEqual(try fixturePaneIDs(supportDir: supportDir), ["s11", "s100"])
     }
 
+    func testE2EUIDriverClosesRailSessionFromCloseButton() throws {
+        let supportDir = try makeTempDirectory()
+        let projectDir = try makeTempDirectory(prefix: "st-e2e-ui-close-project")
+        try writeFixtureSnapshot(supportDir: supportDir,
+                                 projectPath: projectDir,
+                                 collapsed: false,
+                                 includeSecondSession: true)
+
+        let app = try launchApp(supportDir: supportDir)
+        defer { app.terminate() }
+
+        let socketPath = supportDir.appendingPathComponent("control.sock").path
+        let closeHit = try rawSocketJSON(socketPath: socketPath,
+                                         object: ["cmd": "ui-hit-test", "id": "session-close-s12"])
+        XCTAssertEqual(closeHit["ok"] as? Bool, true)
+        XCTAssertEqual(closeHit["matchesTarget"] as? Bool, true)
+
+        let closePress = try rawSocketJSON(socketPath: socketPath,
+                                           object: ["cmd": "ui-press", "id": "session-close-s12"])
+        XCTAssertEqual(closePress["ok"] as? Bool, true, "Close reply: \(closePress)")
+
+        let state = try XCTUnwrap(closePress["state"] as? [String: Any])
+        let projects = try XCTUnwrap(state["projects"] as? [[String: Any]])
+        let sessions = try XCTUnwrap(projects.first?["sessions"] as? [[String: Any]])
+        XCTAssertEqual(sessions.compactMap { $0["id"] as? String }, ["s10"])
+        XCTAssertEqual(state["activeSessionID"] as? String, "s10")
+    }
+
     func testUIE2ESmokeTogglesBrowserPaneThroughAccessibility() throws {
         try requireUIE2EEnabled()
         try requireAccessibilityTrust()

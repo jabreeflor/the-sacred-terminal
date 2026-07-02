@@ -291,6 +291,8 @@ enum E2EUIDriver {
     }
 
     private static func requiresExactHitTarget(_ identifier: String) -> Bool {
-        identifier.hasPrefix("session-row-") || identifier.hasPrefix("project-row-")
+        identifier.hasPrefix("session-row-")
+            || identifier.hasPrefix("session-close-")
+            || identifier.hasPrefix("project-row-")
     }
 }
